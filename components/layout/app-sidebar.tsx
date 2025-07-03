@@ -1,0 +1,71 @@
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import {
+  IconDashboard,
+  IconListDetails,
+  IconUsers,
+  IconBuildingStore,
+  IconLogout,
+  IconInnerShadowTop,
+} from "@tabler/icons-react"
+
+import { NavMain } from "@/components/layout/nav-main"
+import { NavSecondary } from "@/components/layout/nav-secondary"
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from "@/components/ui/sidebar"
+
+export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+  const router = useRouter()
+  const supabase = createClient()
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push("/login")
+  }
+
+  const data = {
+    navMain: [
+      { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
+      { title: "Offerte",    url: "/offerte", icon: IconListDetails },
+      { title: "Clienti",    url: "/clienti", icon: IconUsers },
+      { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },
+    ],
+    navSecondary: [
+      { title: "Logout", icon: IconLogout, onClick: handleLogout },
+    ],
+  }
+
+  return (
+    <Sidebar collapsible="offcanvas" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <IconInnerShadowTop className="!size-5" />
+                <span className="text-base font-semibold">Premium</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <NavMain items={data.navMain} />
+
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
+      </SidebarContent>
+    </Sidebar>
+  )
+}

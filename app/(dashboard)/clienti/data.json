@@ -1,0 +1,1082 @@
+[
+  {
+    "id": 1,
+    "societa": "Società 1",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente1@example.com",
+    "cell": "+39 3296779322",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 2,
+    "societa": "Società 2",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente2@example.com",
+    "cell": "+39 3497964313",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 3,
+    "societa": "Società 3",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente3@example.com",
+    "cell": "+39 3452184956",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 4,
+    "societa": "Società 4",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente4@example.com",
+    "cell": "+39 3126598445",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 5,
+    "societa": "Società 5",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente5@example.com",
+    "cell": "+39 3603080692",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 6,
+    "societa": "Società 6",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente6@example.com",
+    "cell": "+39 3509304155",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 7,
+    "societa": "Società 7",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente7@example.com",
+    "cell": "+39 3378251094",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 8,
+    "societa": "Società 8",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente8@example.com",
+    "cell": "+39 3503796340",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 9,
+    "societa": "Società 9",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente9@example.com",
+    "cell": "+39 3708518036",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 10,
+    "societa": "Società 10",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente10@example.com",
+    "cell": "+39 3305412563",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 11,
+    "societa": "Società 11",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente11@example.com",
+    "cell": "+39 3704874293",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 12,
+    "societa": "Società 12",
+    "tipo": "Tipo A",
+    "stato": "Completato",
+    "email": "cliente12@example.com",
+    "cell": "+39 3011281187",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 13,
+    "societa": "Società 13",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente13@example.com",
+    "cell": "+39 3859789446",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 14,
+    "societa": "Società 14",
+    "tipo": "Tipo A",
+    "stato": "Completato",
+    "email": "cliente14@example.com",
+    "cell": "+39 3708994699",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 15,
+    "societa": "Società 15",
+    "tipo": "Tipo C",
+    "stato": "Inattivo",
+    "email": "cliente15@example.com",
+    "cell": "+39 3289062212",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 16,
+    "societa": "Società 16",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente16@example.com",
+    "cell": "+39 3497480117",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 17,
+    "societa": "Società 17",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente17@example.com",
+    "cell": "+39 3687995280",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 18,
+    "societa": "Società 18",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente18@example.com",
+    "cell": "+39 3424211844",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 19,
+    "societa": "Società 19",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente19@example.com",
+    "cell": "+39 3503502152",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 20,
+    "societa": "Società 20",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente20@example.com",
+    "cell": "+39 3812642097",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 21,
+    "societa": "Società 21",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente21@example.com",
+    "cell": "+39 3495087523",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 22,
+    "societa": "Società 22",
+    "tipo": "Tipo B",
+    "stato": "Inattivo",
+    "email": "cliente22@example.com",
+    "cell": "+39 3223638348",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 23,
+    "societa": "Società 23",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente23@example.com",
+    "cell": "+39 3992431463",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 24,
+    "societa": "Società 24",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente24@example.com",
+    "cell": "+39 3118263386",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 25,
+    "societa": "Società 25",
+    "tipo": "Tipo A",
+    "stato": "Completato",
+    "email": "cliente25@example.com",
+    "cell": "+39 3921839271",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 26,
+    "societa": "Società 26",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente26@example.com",
+    "cell": "+39 3184407516",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 27,
+    "societa": "Società 27",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente27@example.com",
+    "cell": "+39 3785597670",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 28,
+    "societa": "Società 28",
+    "tipo": "Tipo C",
+    "stato": "Inattivo",
+    "email": "cliente28@example.com",
+    "cell": "+39 3353158277",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 29,
+    "societa": "Società 29",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente29@example.com",
+    "cell": "+39 3595877293",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 30,
+    "societa": "Società 30",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente30@example.com",
+    "cell": "+39 3638495215",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 31,
+    "societa": "Società 31",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente31@example.com",
+    "cell": "+39 3041438155",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 32,
+    "societa": "Società 32",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente32@example.com",
+    "cell": "+39 3682213554",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 33,
+    "societa": "Società 33",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente33@example.com",
+    "cell": "+39 3238224352",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 34,
+    "societa": "Società 34",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente34@example.com",
+    "cell": "+39 3573136367",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 35,
+    "societa": "Società 35",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente35@example.com",
+    "cell": "+39 3229797950",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 36,
+    "societa": "Società 36",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente36@example.com",
+    "cell": "+39 3255657648",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 37,
+    "societa": "Società 37",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente37@example.com",
+    "cell": "+39 3131885501",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 38,
+    "societa": "Società 38",
+    "tipo": "Tipo B",
+    "stato": "Inattivo",
+    "email": "cliente38@example.com",
+    "cell": "+39 3573811964",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 39,
+    "societa": "Società 39",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente39@example.com",
+    "cell": "+39 3988609964",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 40,
+    "societa": "Società 40",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente40@example.com",
+    "cell": "+39 3715313846",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 41,
+    "societa": "Società 41",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente41@example.com",
+    "cell": "+39 3144423129",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 42,
+    "societa": "Società 42",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente42@example.com",
+    "cell": "+39 3039908400",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 43,
+    "societa": "Società 43",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente43@example.com",
+    "cell": "+39 3436584370",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 44,
+    "societa": "Società 44",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente44@example.com",
+    "cell": "+39 3709538848",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 45,
+    "societa": "Società 45",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente45@example.com",
+    "cell": "+39 3211639652",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 46,
+    "societa": "Società 46",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente46@example.com",
+    "cell": "+39 3501275605",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 47,
+    "societa": "Società 47",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente47@example.com",
+    "cell": "+39 3337124683",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 48,
+    "societa": "Società 48",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente48@example.com",
+    "cell": "+39 3857757420",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 49,
+    "societa": "Società 49",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente49@example.com",
+    "cell": "+39 3854518453",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 50,
+    "societa": "Società 50",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente50@example.com",
+    "cell": "+39 3148841812",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 51,
+    "societa": "Società 51",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente51@example.com",
+    "cell": "+39 3479015402",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 52,
+    "societa": "Società 52",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente52@example.com",
+    "cell": "+39 3316638884",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 53,
+    "societa": "Società 53",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente53@example.com",
+    "cell": "+39 3014399678",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 54,
+    "societa": "Società 54",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente54@example.com",
+    "cell": "+39 3052268422",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 55,
+    "societa": "Società 55",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente55@example.com",
+    "cell": "+39 3059880603",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 56,
+    "societa": "Società 56",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente56@example.com",
+    "cell": "+39 3139520672",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 57,
+    "societa": "Società 57",
+    "tipo": "Tipo C",
+    "stato": "Inattivo",
+    "email": "cliente57@example.com",
+    "cell": "+39 3433446531",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 58,
+    "societa": "Società 58",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente58@example.com",
+    "cell": "+39 3541741770",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 59,
+    "societa": "Società 59",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente59@example.com",
+    "cell": "+39 3575258652",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 60,
+    "societa": "Società 60",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente60@example.com",
+    "cell": "+39 3708471843",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 61,
+    "societa": "Società 61",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente61@example.com",
+    "cell": "+39 3911725564",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 62,
+    "societa": "Società 62",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente62@example.com",
+    "cell": "+39 3882330989",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 63,
+    "societa": "Società 63",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente63@example.com",
+    "cell": "+39 3918593341",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 64,
+    "societa": "Società 64",
+    "tipo": "Tipo B",
+    "stato": "Inattivo",
+    "email": "cliente64@example.com",
+    "cell": "+39 3683431363",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 65,
+    "societa": "Società 65",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente65@example.com",
+    "cell": "+39 3087416764",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 66,
+    "societa": "Società 66",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente66@example.com",
+    "cell": "+39 3584594047",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 67,
+    "societa": "Società 67",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente67@example.com",
+    "cell": "+39 3472490657",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 68,
+    "societa": "Società 68",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente68@example.com",
+    "cell": "+39 3433763406",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 69,
+    "societa": "Società 69",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente69@example.com",
+    "cell": "+39 3894593503",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 70,
+    "societa": "Società 70",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente70@example.com",
+    "cell": "+39 3051768231",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 71,
+    "societa": "Società 71",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente71@example.com",
+    "cell": "+39 3879979548",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 72,
+    "societa": "Società 72",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente72@example.com",
+    "cell": "+39 3684605466",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 73,
+    "societa": "Società 73",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente73@example.com",
+    "cell": "+39 3296835927",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 74,
+    "societa": "Società 74",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente74@example.com",
+    "cell": "+39 3567951043",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 75,
+    "societa": "Società 75",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente75@example.com",
+    "cell": "+39 3294801068",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 76,
+    "societa": "Società 76",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente76@example.com",
+    "cell": "+39 3651077754",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 77,
+    "societa": "Società 77",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente77@example.com",
+    "cell": "+39 3631489531",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 78,
+    "societa": "Società 78",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente78@example.com",
+    "cell": "+39 3986141377",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 79,
+    "societa": "Società 79",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente79@example.com",
+    "cell": "+39 3816256746",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 80,
+    "societa": "Società 80",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente80@example.com",
+    "cell": "+39 3301315944",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 81,
+    "societa": "Società 81",
+    "tipo": "Tipo C",
+    "stato": "Inattivo",
+    "email": "cliente81@example.com",
+    "cell": "+39 3054123922",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 82,
+    "societa": "Società 82",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente82@example.com",
+    "cell": "+39 3035003711",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 83,
+    "societa": "Società 83",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente83@example.com",
+    "cell": "+39 3791102695",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 84,
+    "societa": "Società 84",
+    "tipo": "Tipo A",
+    "stato": "Inattivo",
+    "email": "cliente84@example.com",
+    "cell": "+39 3152844290",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 85,
+    "societa": "Società 85",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente85@example.com",
+    "cell": "+39 3713574515",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 86,
+    "societa": "Società 86",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente86@example.com",
+    "cell": "+39 3683626085",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 87,
+    "societa": "Società 87",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente87@example.com",
+    "cell": "+39 3245580989",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 88,
+    "societa": "Società 88",
+    "tipo": "Tipo C",
+    "stato": "Inattivo",
+    "email": "cliente88@example.com",
+    "cell": "+39 3995008435",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 89,
+    "societa": "Società 89",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente89@example.com",
+    "cell": "+39 3022541260",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 90,
+    "societa": "Società 90",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente90@example.com",
+    "cell": "+39 3361668774",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 91,
+    "societa": "Società 91",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente91@example.com",
+    "cell": "+39 3582137676",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 92,
+    "societa": "Società 92",
+    "tipo": "Tipo B",
+    "stato": "Inattivo",
+    "email": "cliente92@example.com",
+    "cell": "+39 3635939990",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 93,
+    "societa": "Società 93",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente93@example.com",
+    "cell": "+39 3359733905",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 94,
+    "societa": "Società 94",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente94@example.com",
+    "cell": "+39 3234001317",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 95,
+    "societa": "Società 95",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente95@example.com",
+    "cell": "+39 3559752114",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 96,
+    "societa": "Società 96",
+    "tipo": "Tipo C",
+    "stato": "Attivo",
+    "email": "cliente96@example.com",
+    "cell": "+39 3063445555",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 97,
+    "societa": "Società 97",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente97@example.com",
+    "cell": "+39 3322572709",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 98,
+    "societa": "Società 98",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente98@example.com",
+    "cell": "+39 3528866966",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 99,
+    "societa": "Società 99",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente99@example.com",
+    "cell": "+39 3186050207",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 100,
+    "societa": "Società 100",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente100@example.com",
+    "cell": "+39 3341321258",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 101,
+    "societa": "Società 101",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente101@example.com",
+    "cell": "+39 3145051599",
+    "referente": "Francesca Neri"
+  },
+  {
+    "id": 102,
+    "societa": "Società 102",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente102@example.com",
+    "cell": "+39 3684370296",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 103,
+    "societa": "Società 103",
+    "tipo": "Tipo A",
+    "stato": "Attivo",
+    "email": "cliente103@example.com",
+    "cell": "+39 3229974934",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 104,
+    "societa": "Società 104",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente104@example.com",
+    "cell": "+39 3434456393",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 105,
+    "societa": "Società 105",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente105@example.com",
+    "cell": "+39 3378885022",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 106,
+    "societa": "Società 106",
+    "tipo": "Tipo D",
+    "stato": "In Lavorazione",
+    "email": "cliente106@example.com",
+    "cell": "+39 3958854619",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 107,
+    "societa": "Società 107",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente107@example.com",
+    "cell": "+39 3332222680",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 108,
+    "societa": "Società 108",
+    "tipo": "Tipo D",
+    "stato": "Attivo",
+    "email": "cliente108@example.com",
+    "cell": "+39 3804346487",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 109,
+    "societa": "Società 109",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente109@example.com",
+    "cell": "+39 3663583197",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 110,
+    "societa": "Società 110",
+    "tipo": "Tipo C",
+    "stato": "In Lavorazione",
+    "email": "cliente110@example.com",
+    "cell": "+39 3441071192",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 111,
+    "societa": "Società 111",
+    "tipo": "Tipo B",
+    "stato": "Inattivo",
+    "email": "cliente111@example.com",
+    "cell": "+39 3649106284",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 112,
+    "societa": "Società 112",
+    "tipo": "Tipo D",
+    "stato": "Completato",
+    "email": "cliente112@example.com",
+    "cell": "+39 3445595348",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 113,
+    "societa": "Società 113",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente113@example.com",
+    "cell": "+39 3297084791",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 114,
+    "societa": "Società 114",
+    "tipo": "Tipo B",
+    "stato": "In Lavorazione",
+    "email": "cliente114@example.com",
+    "cell": "+39 3055750969",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 115,
+    "societa": "Società 115",
+    "tipo": "Tipo B",
+    "stato": "Attivo",
+    "email": "cliente115@example.com",
+    "cell": "+39 3343401064",
+    "referente": "Giulia Verdi"
+  },
+  {
+    "id": 116,
+    "societa": "Società 116",
+    "tipo": "Tipo D",
+    "stato": "Inattivo",
+    "email": "cliente116@example.com",
+    "cell": "+39 3842480014",
+    "referente": "Luca Ferrari"
+  },
+  {
+    "id": 117,
+    "societa": "Società 117",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente117@example.com",
+    "cell": "+39 3852054743",
+    "referente": "Luigi Bianchi"
+  },
+  {
+    "id": 118,
+    "societa": "Società 118",
+    "tipo": "Tipo C",
+    "stato": "Completato",
+    "email": "cliente118@example.com",
+    "cell": "+39 3324184615",
+    "referente": "Anna Russo"
+  },
+  {
+    "id": 119,
+    "societa": "Società 119",
+    "tipo": "Tipo B",
+    "stato": "Completato",
+    "email": "cliente119@example.com",
+    "cell": "+39 3172885099",
+    "referente": "Mario Rossi"
+  },
+  {
+    "id": 120,
+    "societa": "Società 120",
+    "tipo": "Tipo A",
+    "stato": "In Lavorazione",
+    "email": "cliente120@example.com",
+    "cell": "+39 3212826456",
+    "referente": "Anna Russo"
+  }
+]
