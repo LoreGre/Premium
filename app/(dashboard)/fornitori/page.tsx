@@ -75,17 +75,30 @@ export default function SuppliersPage() {
 
   /* ---------- fetch iniziale ---------- */
   useEffect(() => {
-    Promise.all([fetchSuppliers(), fetchSupplierCategories()])
-      .then(([suppliersData, categoriesData]) => {
-        setSuppliers(suppliersData)
-        setCategories(categoriesData)
+    setLoading(true);
+
+    fetchSuppliers()
+      .then(data => {
+        console.log('Fornitori caricati:', data);
+        setSuppliers(data);
       })
-      .catch((e) => {
-        console.error('Errore iniziale:', e)
-        error('Errore', 'Impossibile caricare fornitori o categorie')
+      .catch(e => {
+        console.error('Errore fetchSuppliers:', e);
+        if (typeof error === 'function') error('Errore', 'Impossibile caricare i fornitori');
       })
-      .finally(() => setLoading(false))
-  }, [error])
+      .finally(() => setLoading(false));
+
+    fetchSupplierCategories()
+      .then(data => {
+        console.log('Categorie caricate:', data);
+        setCategories(data);
+      })
+      .catch(e => {
+        console.error('Errore fetchSupplierCategories:', e);
+        if (typeof error === 'function') error('Errore', 'Impossibile caricare le categorie');
+      });
+  }, []);
+  
 
 
   /* ---------- drawer form state ---------- */
@@ -167,7 +180,6 @@ export default function SuppliersPage() {
         />
       )}
 
-      {/* Drawer form – rimontato grazie alla key */}
       <FormDynamic
         key={drawerForm.defaultValues
           ? `edit-${drawerForm.defaultValues.id ?? JSON.stringify(drawerForm.defaultValues)}`
