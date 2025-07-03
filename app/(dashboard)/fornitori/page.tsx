@@ -97,7 +97,7 @@ export default function SuppliersPage() {
         console.error('Errore fetchSupplierCategories:', e);
         if (typeof error === 'function') error('Errore', 'Impossibile caricare le categorie');
       });
-  }, []);
+  }, [error]);
   
 
 
