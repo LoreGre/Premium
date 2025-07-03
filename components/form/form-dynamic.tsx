@@ -42,6 +42,7 @@ export type FormField = {
   required?: boolean
   options?: { label: string; value: string }[]
   placeholder?: string
+  validation?: string
 }
 
 type FormDynamicProps = {
@@ -66,34 +67,33 @@ export function FormDynamic({
   onSubmit,
   defaultValues = {},
 }: FormDynamicProps) {
-  const schema = React.useMemo(() => {
-    const shape: Record<string, z.ZodTypeAny> = {}
+  const VALIDATORS: Record<string, z.ZodTypeAny> = {
+    sdi_code: z.string().length(7, 'Il codice SDI deve essere di 7 caratteri'),
+    provincia: z.string().length(2, 'La provincia deve essere di 2 lettere').regex(/^[A-Za-z]{2}$/, 'Provincia non valida'),
+    piva: z.string().regex(/^[0-9]{11}$/, 'Partita IVA non valida'),
+    cf: z.string().regex(/^[A-Z0-9]{16}$/i, 'Codice fiscale non valido'),
+    cap: z.string().regex(/^[0-9]{5}$/, 'CAP non valido'),
+  }
 
-    fields.forEach((field) => {
-      let validator: z.ZodTypeAny
-
-      if (field.type === 'multiselect') {
-        validator = field.required
-          ? z.array(z.string()).min(1, 'Seleziona almeno una categoria')
-          : z.array(z.string()).optional()
-      } else if (field.type === 'select') {
-        validator = field.required
-          ? z.string().min(1, 'Campo obbligatorio')
-          : z.string().optional()
-      } else if (field.type === 'email') {
-        validator = field.required
-          ? z.string().min(1, 'Campo obbligatorio').email('Email non valida')
-          : z.union([z.literal(''), z.string().email('Email non valida')]).optional()
-      } else {
-        validator = field.required
-          ? z.string().min(1, 'Campo obbligatorio')
-          : z.string().optional()
-      }
-
-      shape[field.name] = validator
-    })
-    return z.object(shape)
-  }, [fields])
+  const shape: Record<string, z.ZodTypeAny> = {}
+  fields.forEach((field) => {
+    let base = field.validation && VALIDATORS[field.validation]
+      ? VALIDATORS[field.validation]
+      : field.type === 'multiselect'
+        ? z.array(z.string()).min(field.required ? 1 : 0, 'Seleziona almeno una categoria')
+        : field.type === 'select'
+          ? z.string().min(field.required ? 1 : 0, 'Campo obbligatorio')
+          : field.type === 'email'
+            ? z.string().email('Email non valida')
+            : z.string()
+    shape[field.name] = field.required
+      ? base
+      : z.preprocess(
+          val => (val === '' ? undefined : val),
+          base.optional()
+        )
+  })
+  const schema = z.object(shape)
 
   const {
     control,
