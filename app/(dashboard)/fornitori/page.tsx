@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { fetchSuppliers, upsertSupplier, deleteSupplier, fetchSupplierCategories } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { FormDynamic, FormField } from '@/components/form/form-dynamic'
@@ -50,6 +50,8 @@ const columnTypes = {
 /* ------------------------------------------------------------------ */
 export default function SuppliersPage() {
   const { success, error } = useNotify()
+  const errorRef = useRef(error)
+  errorRef.current = error
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [categories, setCategories] = useState<{ label: string; value: string }[]>([])
   const [loading,   setLoading]   = useState(true)
@@ -75,29 +77,33 @@ export default function SuppliersPage() {
 
   /* ---------- fetch iniziale ---------- */
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
 
-    fetchSuppliers()
-      .then(data => {
-        console.log('Fornitori caricati:', data);
-        setSuppliers(data);
-      })
-      .catch(e => {
-        console.error('Errore fetchSuppliers:', e);
-        if (typeof error === 'function') error('Errore', 'Impossibile caricare i fornitori');
-      })
-      .finally(() => setLoading(false));
+    Promise.allSettled([fetchSuppliers(), fetchSupplierCategories()])
+      .then(([suppliersResult, categoriesResult]) => {
+        if (cancelled) return;
 
-    fetchSupplierCategories()
-      .then(data => {
-        console.log('Categorie caricate:', data);
-        setCategories(data);
+        if (suppliersResult.status === 'fulfilled') {
+          setSuppliers(suppliersResult.value);
+        } else {
+          console.error('Errore fetchSuppliers:', suppliersResult.reason);
+          if (typeof errorRef.current === 'function') errorRef.current('Errore', 'Impossibile caricare i fornitori');
+        }
+
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value);
+        } else {
+          console.error('Errore fetchSupplierCategories:', categoriesResult.reason);
+          if (typeof errorRef.current === 'function') errorRef.current('Errore', 'Impossibile caricare le categorie');
+        }
       })
-      .catch(e => {
-        console.error('Errore fetchSupplierCategories:', e);
-        if (typeof error === 'function') error('Errore', 'Impossibile caricare le categorie');
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-  }, [error]);
+
+    return () => { cancelled = true; };
+  }, []);
   
 
 
