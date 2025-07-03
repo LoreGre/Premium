@@ -293,7 +293,7 @@ export function DataTableDynamic<
                     <Button variant="outline" size="sm" className="min-w-[180px] justify-between">
                         <span className="truncate">
                         {filterValues[key]?.length
-                            ? `${filterValues[key].length} selected`
+                            ? `(${filterValues[key].length}) selezionat*`
                             : `Seleziona ${key.charAt(0).toUpperCase() + key.slice(1)}`}
                         </span>
                         <IconChevronDown className="ml-2 size-4" />
