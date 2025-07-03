@@ -69,8 +69,8 @@ type FormDynamicProps = {
   title?: string
   description?: string
   fields: FormField[]
-  defaultValues?: Record<string, any>
-  onSubmit: (data: Record<string, any>) => void
+  defaultValues?: Record<string, string | string[]>
+  onSubmit: (data: Record<string, string | string[]>) => void
 }
 
 export function FormDynamic({

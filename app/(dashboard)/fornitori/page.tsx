@@ -7,8 +7,6 @@ import { FormDynamic, FormField } from '@/components/form/form-dynamic'
 import { DataTableDynamic } from '@/components/table/data-table-dynamic'
 import { availableCountries } from '@/lib/data/countries'
 import { openDrawerForm } from '@/lib/utils/forms'
-import { MultiSelect } from '@/components/form/multi-select'
-import { Controller } from 'react-hook-form'
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
