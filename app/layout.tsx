@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 import { Toaster } from "sonner"
+import { SiteFooter } from "@/components/layout/site-footer"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
           <Toaster position="top-right" richColors />
+          <SiteFooter />
         </ThemeProvider>
       </body>
     </html>

@@ -31,9 +31,6 @@ export function SiteHeader() {
         />
         <h1 className="text-base font-medium">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
-          <div className="bottom-2 right-2 z-50 text-xs font-mono px-2 py-1 rounded bg-muted text-muted-foreground">
-            Ver: {process.env.NEXT_PUBLIC_ENV?.toUpperCase()} | {process.env.NEXT_PUBLIC_GIT_COMMIT_REF} @ {process.env.NEXT_PUBLIC_GIT_COMMIT_SHA}
-          </div>
           <ThemeToggle />
         </div>
       </div>
