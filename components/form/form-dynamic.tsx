@@ -1,30 +1,8 @@
 'use client'
 
-/**
- * FormDynamic v1.2.1
- * ===================
- *
- * ✅ Features:
- * - Supporto a campi dinamici con tipi: text, email, phone, textarea, select
- * - Validazione dinamica con Zod
- * - Visualizzazione in Sheet (apertura da destra, scroll interno)
- * - Supporto a valori di default (edit)
- * - Messaggi di errore per campo
- * - Pulsanti Salva / Annulla con chiusura controllata
- *
- * 🔌 Dipendenze:
- * - react-hook-form
- * - zod
- * - @hookform/resolvers
- * - ShadCN UI: sheet, input, button, textarea, select, label
- *
- * ⏭️ Next Improve:
- * - Supporto a checkbox, radio, datepicker
- * - Field group & conditional logic
- * - Layout responsive a colonne
- * - Tooltip inline e descrizioni campo
- */
-
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 import * as React from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -54,6 +32,9 @@ import {
 } from '@/components/ui/select'
 import { MultiSelect } from '@/components/form/multi-select'
 
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
 export type FormField = {
   name: string
   label: string
@@ -73,6 +54,9 @@ type FormDynamicProps = {
   onSubmit: (data: Record<string, string | string[]>) => void
 }
 
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 export function FormDynamic({
   open,
   onOpenChange,
@@ -128,6 +112,9 @@ export function FormDynamic({
     onOpenChange(false)
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Render                                                              */
+  /* ------------------------------------------------------------------ */
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-xl p-0">

@@ -1,13 +1,5 @@
 'use client'
 
-/* ------------------------------------------------------------------
- * DataTableDynamic v1.3.2  –  type-safe                       (TSX)
- * ------------------------------------------------------------------
- * - Nessuna modifica visuale / logica rispetto alla tua versione
- * - Tipizzazione generica <T extends Record<string, unknown>>
- * - onDelete tipizzata con T[]
- * - Accesso item[key] senza any
- * ------------------------------------------------------------------ */
 
 import * as React from 'react'
 import {
@@ -70,9 +62,6 @@ import {
 } from '@/components/ui/alert-dialog'
 
 
-/* ------------------------------------------------------------------ */
-/* Tipi generici                                                      */
-/* ------------------------------------------------------------------ */
 export type GenericObject = Record<string, unknown>
 
 export type ColumnType =
@@ -93,9 +82,7 @@ export interface DataTableDynamicProps<
   onDelete?: (items: T[]) => void
 }
 
-/* ------------------------------------------------------------------ */
-/* Componente                                                         */
-/* ------------------------------------------------------------------ */
+
 export function DataTableDynamic<
   T extends Record<string, unknown> = GenericObject
 >({
@@ -107,7 +94,7 @@ export function DataTableDynamic<
   onEdit,
   onDelete,
 }: DataTableDynamicProps<T>) {
-  /* ---------- state ---------- */
+
   const [globalFilter, setGlobalFilter] = React.useState('')
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({})
@@ -122,7 +109,7 @@ export function DataTableDynamic<
   const [dialogOpen, setDialogOpen] = React.useState(false)
 
 
-  /* ---------- debounce search ---------- */
+
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -130,7 +117,7 @@ export function DataTableDynamic<
     debounceRef.current = setTimeout(() => setGlobalFilter(value), 250)
   }
 
-  /* ---------- filtering ---------- */
+
   const filteredData = React.useMemo(() => {
     return data.filter((item) =>
       Object.entries(filterValues).every(([key, selected]) => {
@@ -148,7 +135,7 @@ export function DataTableDynamic<
     )
   }, [data, filterValues])
 
-  /* ---------- columns ---------- */
+
   const columns = React.useMemo<ColumnDef<T>[]>(() => {
     if (data.length === 0) return []
 
@@ -254,7 +241,7 @@ export function DataTableDynamic<
     return [selectCol, ...dynamic, actionCol]
   }, [data, columnTypes, onEdit])
 
-  /* ---------- table ---------- */
+
   const table = useReactTable({
     data: filteredData,
     columns,
@@ -271,7 +258,7 @@ export function DataTableDynamic<
 
   return (
     <div className="space-y-4">
-      {/* Header: title + filters/buttons */}
+
       <div className="space-y-2 px-4">
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>
