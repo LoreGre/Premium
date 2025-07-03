@@ -75,17 +75,17 @@ export default function SuppliersPage() {
 
   /* ---------- fetch iniziale ---------- */
   useEffect(() => {
-  Promise.all([fetchSuppliers(), fetchSupplierCategories()])
-    .then(([suppliersData, categoriesData]) => {
-      setSuppliers(suppliersData)
-      setCategories(categoriesData)
-    })
-    .catch((e) => {
-      console.error('Errore iniziale:', e)
-      error('Errore', 'Impossibile caricare fornitori o categorie')
-    })
-    .finally(() => setLoading(false))
-}, [])
+    Promise.all([fetchSuppliers(), fetchSupplierCategories()])
+      .then(([suppliersData, categoriesData]) => {
+        setSuppliers(suppliersData)
+        setCategories(categoriesData)
+      })
+      .catch((e) => {
+        console.error('Errore iniziale:', e)
+        error('Errore', 'Impossibile caricare fornitori o categorie')
+      })
+      .finally(() => setLoading(false))
+  }, [error])
 
 
   /* ---------- drawer form state ---------- */
@@ -177,7 +177,15 @@ export default function SuppliersPage() {
         title={drawerForm.title}
         fields={drawerForm.fields}
         onSubmit={drawerForm.onSubmit}
-        defaultValues={drawerForm.defaultValues}
+        defaultValues={
+          drawerForm.defaultValues
+            ? Object.fromEntries(
+                Object.entries(drawerForm.defaultValues)
+                  .filter(([, v]) => typeof v === 'string' || Array.isArray(v))
+                  .map(([k, v]) => [k, Array.isArray(v) ? v : String(v)])
+              )
+            : undefined
+        }
       />
     </main>
   )
