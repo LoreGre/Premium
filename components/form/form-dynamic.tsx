@@ -77,7 +77,7 @@ export function FormDynamic({
 
   const shape: Record<string, z.ZodTypeAny> = {}
   fields.forEach((field) => {
-    let base = field.validation && VALIDATORS[field.validation]
+    const base = field.validation && VALIDATORS[field.validation]
       ? VALIDATORS[field.validation]
       : field.type === 'multiselect'
         ? z.array(z.string()).min(field.required ? 1 : 0, 'Seleziona almeno una categoria')
