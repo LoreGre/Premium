@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from "@/lib/utils"
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 export type MultiSelectOption = {
   label: string
@@ -83,38 +84,39 @@ export function MultiSelect({
             </button>
           )}
 
-          <div className="max-h-[200px] overflow-y-auto space-y-1">
-            {filtered.length === 0 && (
-              <div className="text-sm text-muted-foreground text-center py-4">
-                Nessun risultato
-              </div>
-            )}
-
-            {filtered.map((option) => {
-              const selected = value.includes(option.value)
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => toggle(option.value)}
-                  className={cn(
-                    'flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm hover:bg-accent',
-                    selected && 'bg-accent'
-                  )}
-                >
-                  <span
+          <ScrollArea className="h-[200px] pr-2">
+            <div className="space-y-1">
+              {filtered.length === 0 && (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  Nessun risultato
+                </div>
+              )}
+              {filtered.map((option) => {
+                const selected = value.includes(option.value)
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => toggle(option.value)}
                     className={cn(
-                      'flex items-center justify-center size-4 rounded border border-muted shrink-0',
-                      selected && 'bg-primary'
+                      'flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm hover:bg-accent',
+                      selected && 'bg-accent'
                     )}
                   >
-                    {selected && <Check className="w-3 h-3 text-white" />}
-                  </span>
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
+                    <span
+                      className={cn(
+                        'flex items-center justify-center size-4 rounded border border-muted shrink-0',
+                        selected && 'bg-primary'
+                      )}
+                    >
+                      {selected && <Check className="w-3 h-3 text-white" />}
+                    </span>
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </ScrollArea>
         </PopoverContent>
       </Popover>
 
