@@ -11,7 +11,6 @@ import {
   IconUsers,
   IconBuildingStore,
   IconLogout,
-  IconInnerShadowTop,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/layout/nav-main"
