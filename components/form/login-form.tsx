@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 //import { use } from "react"
 
+import Image from 'next/image'
+
 export function LoginForm({
   className,
   ...props
@@ -51,6 +53,16 @@ export function LoginForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
+      <div className="flex justify-center">
+        <Image
+          src="/logo.svg"
+          alt="Premium S.r.l."
+          width={0}
+          height={0}
+          sizes="40vw"
+          style={{ width: '40%', height: 'auto' }}
+        />
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Login to your account</CardTitle>

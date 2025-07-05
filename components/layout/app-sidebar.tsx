@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import Image from 'next/image'
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -53,8 +54,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
               <Link href="/dashboard" className="flex items-center gap-2">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Premium</span>
+              <Image
+                src="/logo.svg"
+                alt="Premium S.r.l."
+                width={0}
+                height={0}
+                sizes="50vw"
+                style={{ width: '50%', height: 'auto' }}
+              />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
