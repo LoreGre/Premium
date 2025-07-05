@@ -68,10 +68,10 @@ export function FormDynamic({
   defaultValues = {},
 }: FormDynamicProps) {
   const VALIDATORS: Record<string, z.ZodTypeAny> = {
-    sdi_code: z.string().length(7, 'Il codice SDI deve essere di 7 caratteri'),
-    provincia: z.string().length(2, 'La provincia deve essere di 2 lettere').regex(/^[A-Za-z]{2}$/, 'Provincia non valida'),
+    sdi_code: z.string().regex(/^[A-Z0-9]{7}$/, 'Codice SDI non valido'),
+    provincia: z.string().regex(/^[A-Z]{2}$/, 'Provincia non valida'),
     piva: z.string().regex(/^[0-9]{11}$/, 'Partita IVA non valida'),
-    cf: z.string().regex(/^[A-Z0-9]{16}$/i, 'Codice fiscale non valido'),
+    cf: z.string().regex(/^[A-Z0-9]{16}$/i, 'Codice Fiscale non valido'),
     cap: z.string().regex(/^[0-9]{5}$/, 'CAP non valido'),
   }
 
