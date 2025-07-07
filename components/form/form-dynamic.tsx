@@ -71,27 +71,45 @@ export function FormDynamic({
     sdi_code: z.string().regex(/^[A-Z0-9]{7}$/, 'Codice SDI non valido'),
     provincia: z.string().regex(/^[A-Z]{2}$/, 'Provincia non valida'),
     piva: z.string().regex(/^[0-9]{11}$/, 'Partita IVA non valida'),
-    cf: z.string().regex(/^[A-Z0-9]{16}$/i, 'Codice Fiscale non valido'),
+    cf: z.string().regex(/^[A-Z0-9]{16}$/i, 'Codice fiscale non valido'),
     cap: z.string().regex(/^[0-9]{5}$/, 'CAP non valido'),
   }
 
   const shape: Record<string, z.ZodTypeAny> = {}
   fields.forEach((field) => {
-    const base = field.validation && VALIDATORS[field.validation]
-      ? VALIDATORS[field.validation]
-      : field.type === 'multiselect'
-        ? z.array(z.string()).min(field.required ? 1 : 0, 'Seleziona almeno una categoria')
-        : field.type === 'select'
-          ? z.string().min(field.required ? 1 : 0, 'Campo obbligatorio')
-          : field.type === 'email'
-            ? z.string().email('Email non valida')
-            : z.string()
-    shape[field.name] = field.required
-      ? base
-      : z.preprocess(
-          val => (val === '' ? undefined : val),
-          base.optional()
-        )
+    let base: z.ZodTypeAny
+
+    if (field.type === 'multiselect') {
+      if (field.required) {
+        base = z.array(z.string()).min(1, 'Campo obbligatorio')
+      } else {
+        base = z.array(z.string()).optional()
+      }
+    } else if (field.required && field.validation && VALIDATORS[field.validation]) {
+      const validator = VALIDATORS[field.validation]
+      base = z.string()
+        .min(1, 'Campo obbligatorio')
+        .superRefine((val, ctx) => {
+          if (val && !validator.safeParse(val).success) {
+            const msg = validator.safeParse(val).error?.issues?.[0]?.message || 'Campo non valido'
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: msg })
+          }
+        })
+    } else if (field.required) {
+      base = z.string().min(1, 'Campo obbligatorio')
+    } else if (field.validation && VALIDATORS[field.validation]) {
+      const validator = VALIDATORS[field.validation]
+      base = z.string().optional().superRefine((val, ctx) => {
+        if (val && val !== '' && !validator.safeParse(val).success) {
+          const msg = validator.safeParse(val).error?.issues?.[0]?.message || 'Campo non valido'
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: msg })
+        }
+      })
+    } else {
+      base = z.string().optional()
+    }
+
+    shape[field.name] = base
   })
   const schema = z.object(shape)
 
