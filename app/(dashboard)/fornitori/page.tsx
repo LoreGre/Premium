@@ -144,7 +144,7 @@ export default function SuppliersPage() {
                   success('Fornitore aggiunto', `Hai aggiunto "${data.denominazione}"`)
                 } catch (e) {
                   console.error('Errore inserimento:', e)
-                  error('Errore', 'Impossibile salvare il fornitore')
+                  error('Errore', 'Impossibile salvare il Fornitore')
                 }
               },
             })

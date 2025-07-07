@@ -1,13 +1,13 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { Supplier } from './page'
+import { Customer } from './page'
 
 const supabase = createClient()
 
-export async function fetchSuppliers(): Promise<Supplier[]> {
+export async function fetchCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
-    .from('fornitori')
+    .from('clienti')
     .select('*')
     .order('created_at', { ascending: false })
 
@@ -15,7 +15,7 @@ export async function fetchSuppliers(): Promise<Supplier[]> {
   return data ?? []
 }
 
-export async function upsertSupplier(data: Partial<Supplier>) {
+export async function upsertCustomer(data: Partial<Customer>) {
   const { id, ...rest } = data
 
   const {
@@ -34,7 +34,7 @@ export async function upsertSupplier(data: Partial<Supplier>) {
   if (id) {
     // UPDATE
     const { error, data: result } = await supabase
-      .from('fornitori')
+      .from('clienti')
       .update(input)
       .eq('id', id)
       .select()
@@ -44,7 +44,7 @@ export async function upsertSupplier(data: Partial<Supplier>) {
   } else {
     // INSERT
     const { error, data: result } = await supabase
-      .from('fornitori')
+      .from('clienti')
       .insert([input])
       .select()
 
@@ -53,9 +53,10 @@ export async function upsertSupplier(data: Partial<Supplier>) {
   }
 
 }
-export async function deleteSupplier(id: number) {
+
+export async function deleteCustomer(id: number) {
   const { error } = await supabase
-    .from('fornitori')
+    .from('clienti')
     .delete()
     .eq('id', id)
 
@@ -63,7 +64,7 @@ export async function deleteSupplier(id: number) {
 }
 
 
-export async function fetchSupplierCategories(): Promise<{ label: string; value: string }[]> {
+export async function fetchCustomerCategories(): Promise<{ label: string; value: string }[]> {
   const { data, error } = await supabase
     .from('categorie')
     .select('label')
@@ -73,4 +74,3 @@ export async function fetchSupplierCategories(): Promise<{ label: string; value:
 
   return data?.map((c) => ({ label: c.label, value: c.label })) ?? []
 }
-
