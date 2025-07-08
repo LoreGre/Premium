@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const filteredRows = rows.filter(r => r.sku && r.name).slice(0, 500)
+    const filteredRows = rows.filter(r => r.sku && r.name).slice(0, 50)
 
     for (const row of filteredRows) {
       const nome = row.name?.trim() || ''
@@ -113,7 +113,16 @@ export async function POST(req: Request) {
       const taglia = row.taglia?.trim() || ''
       const colore = row.colore?.trim() || ''
 
-      const content = `Prodotto: ${nome}. Categoria: ${categoria}. Prezzo: ${prezzo}€. Taglia: ${taglia}. Colore: ${colore}. ${descrizione}`
+      const chunks = [
+        `Prodotto: ${nome}`,
+        categoria && `Categoria: ${categoria}`,
+        prezzo && `Prezzo: ${prezzo}€`,
+        taglia && `Taglia: ${taglia}`,
+        colore && `Colore: ${colore}`,
+        descrizione && descrizione
+      ].filter(Boolean)
+      
+      const content = chunks.join('. ')
       const content_hash = hashContent(content)
 
       try {
