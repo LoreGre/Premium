@@ -152,14 +152,22 @@ export async function POST(req: Request) {
       const taglia = row.taglia?.trim() || ''
       const colore = row.colore?.trim() || ''
 
+      const MAX_DESC = 3000
+      const truncatedDescrizione =
+        descrizione.length > MAX_DESC ? descrizione.slice(0, MAX_DESC) + ' [...]' : descrizione
+
       const chunks = [
         `Prodotto: ${nome}`,
         categoria && `Categoria: ${categoria}`,
         prezzo && `Prezzo: ${prezzo}€`,
         taglia && `Taglia: ${taglia}`,
         colore && `Colore: ${colore}`,
-        descrizione && descrizione,
+        truncatedDescrizione,
       ].filter(Boolean)
+
+      if (descrizione.length > 100000) {
+        console.warn(`⚠️ SKU ${row.sku} ha descrizione lunga: ${descrizione.length} caratteri`)
+      }      
 
       const content = chunks.join('. ')
       const content_hash = hashContent(content)
@@ -304,8 +312,13 @@ export async function POST(req: Request) {
       skippedError,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Errore imprevisto'
-    console.error('❌ Errore imprevisto:', message)
+    console.error('❌ Errore imprevisto:', err)
+  
+    const message = err instanceof Error
+      ? `${err.name}: ${err.message}`
+      : JSON.stringify(err)
+  
     return NextResponse.json({ error: message }, { status: 500 })
   }
+  
 }
