@@ -8,6 +8,50 @@ function hashContent(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex')
 }
 
+type RowCSV = {
+  sku: string
+  name: string
+  description?: string
+  unit_price?: string
+  category_name?: string
+  taglia?: string
+  colore?: string
+  parent_sku?: string
+  type?: string
+  visibility?: string
+}
+
+type EmbeddingRow = {
+  fornitore: string
+  content: string
+  content_hash: string
+  embedding: number[]
+  sku: string
+  parent_sku?: string
+  unit_price?: string
+  category_name?: string
+  taglia?: string
+  colore?: string
+  type?: string
+  visibility?: string
+  updated_at: string
+}
+
+type ProdottoRow = {
+  sku: string
+  name: string
+  description?: string
+  unit_price?: string
+  category_name?: string
+  taglia?: string
+  colore?: string
+  parent_sku?: string
+  type?: string
+  visibility?: string
+  fornitore: string
+  updated_at: string
+}
+
 export async function POST(req: Request) {
   try {
     const apiKey = req.headers.get('x-api-key')
@@ -45,9 +89,9 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    let rows = parseResult.data as any[]
-    const rowsToUpsert = []
-    const rowsProdottiToUpsert = []
+    const rows = parseResult.data as RowCSV[]
+    const rowsToUpsert: EmbeddingRow[] = []
+    const rowsProdottiToUpsert: ProdottoRow[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
     const skippedError: { sku: string; reason: string }[] = []
 
@@ -70,9 +114,9 @@ export async function POST(req: Request) {
     }
 
     // 🎯 4. Filtra valide + limit 500
-    rows = rows.filter(r => r.sku && r.name).slice(0, 500)
+    const filteredRows = rows.filter(r => r.sku && r.name).slice(0, 500)
 
-    for (const row of rows) {
+    for (const row of filteredRows) {
       const nome = row.name?.trim() || ''
       const descrizione = row.description?.trim() || ''
       const prezzo = row.unit_price?.trim() || ''
@@ -142,9 +186,8 @@ export async function POST(req: Request) {
           fornitore,
           updated_at: new Date().toISOString(),
         })
-
-      } catch (err: any) {
-        const reason = err.message || 'Errore generico'
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'Errore generico'
         console.error(`❌ Errore su SKU ${row.sku}:`, reason)
         skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
 
@@ -195,7 +238,7 @@ export async function POST(req: Request) {
       sku: null,
       message: `Run completata: ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
     })
-    
+
     return NextResponse.json({
       success: true,
       count: rowsToUpsert.length,
@@ -203,7 +246,8 @@ export async function POST(req: Request) {
       skippedError,
     })
   } catch (err) {
-    console.error('❌ Errore imprevisto:', err)
-    return NextResponse.json({ error: 'Errore imprevisto' }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Errore imprevisto'
+    console.error('❌ Errore imprevisto:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
