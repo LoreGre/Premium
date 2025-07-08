@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     const fornitore = 'silan'
     const filename = 'silan_stock_price_full.csv'
 
+    // 📥 1. Scarica file da Supabase
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -28,7 +29,9 @@ export async function POST(req: Request) {
     }
 
     const text = await file.text()
-    const parseResult = Papa.parse(text, {
+
+    // 📤 2. Parsea CSV
+    const parseResult = Papa.parse<RowQuantita>(text, {
       header: true,
       skipEmptyLines: true,
       delimiter: ';',
@@ -42,13 +45,14 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    const rows = parseResult.data as RowQuantita[]
-    let updated = 0
+    const rawRows = parseResult.data
+    const batch: { sku: string; qty: number }[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
     const skippedError: { sku: string; reason: string }[] = []
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
+    // 🧠 3. Costruisci batch
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i]
       const rowNumber = i + 2
       const sku = row.sku?.trim()
       const qty = parseInt(row.qty)
@@ -67,59 +71,35 @@ export async function POST(req: Request) {
         continue
       }
 
-      const { data: existing, error: lookupError } = await supabase
-        .from('prodotti')
-        .select('sku')
-        .eq('sku', sku)
-        .maybeSingle()
-
-      if (lookupError || !existing) {
-        skippedError.push({ sku, reason: 'SKU non trovato in prodotti' })
-        await supabase.from('embedding_logs').insert({
-          fornitore,
-          filename,
-          type: 'stock_error',
-          row_number: rowNumber,
-          sku,
-          message: 'SKU non trovato in prodotti',
-        })
-        continue
-      }
-
-      const { error: updateError } = await supabase
-        .from('prodotti')
-        .update({ qty })
-        .eq('sku', sku)
-
-      if (updateError) {
-        skippedError.push({ sku, reason: updateError.message })
-        await supabase.from('embedding_logs').insert({
-          fornitore,
-          filename,
-          type: 'stock_error',
-          row_number: rowNumber,
-          sku,
-          message: updateError.message,
-        })
-      } else {
-        updated++
-      }
+      batch.push({ sku, qty })
     }
 
+    // 🗃 4. Upsert unico
+    const { error: upsertError } = await supabase
+      .from('prodotti')
+      .upsert(batch, { onConflict: 'sku' })
+
+    if (upsertError) {
+      console.error('❌ Errore upsert batch:', upsertError)
+      return NextResponse.json({ error: 'Errore upsert prodotti', details: upsertError }, { status: 500 })
+    }
+
+    // 📝 5. Logging finale
     await supabase.from('embedding_logs').insert({
       fornitore,
       filename,
       type: 'stock_run_summary',
       row_number: null,
       sku: null,
-      message: `Run completata: ${updated} aggiornati, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
+      message: `Run completata: ${batch.length} aggiornati, ${skippedInvalid.length} invalidi`,
     })
 
+    // ✅ 6. Risposta finale
     return NextResponse.json({
       success: true,
-      updated,
+      updated: batch.length,
       skippedInvalid,
-      skippedError,
+      skippedError, // sempre vuoto in questa versione
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore imprevisto'
