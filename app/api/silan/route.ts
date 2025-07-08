@@ -1,3 +1,8 @@
+//curl -X POST http://premium.local:3000/api/silan \
+  //-H "x-api-key: PTgAhSKMzDAdicZjXOjjPZ33HFBzZJWssHX6egaHhQjdq0az7v9uRdllMBi349h6" \
+  //-H "x-mode: mock" \
+  //-H "Content-Type: application/json"
+
 'use server'
 
 import { NextResponse } from 'next/server'
@@ -208,6 +213,10 @@ export async function POST(req: Request) {
       return existingHash !== r.content_hash
     })
 
+    // ✨ MODE
+    const mode = req.headers.get('x-mode')?.toLowerCase()
+    const isMock = !mode || mode === 'mock'    
+
     // ✨ EMBEDDING
     const contentList = toEmbedNow.map((r) => r.content)
     const maxBatch = 500
@@ -217,14 +226,14 @@ export async function POST(req: Request) {
       const rowsChunk = toEmbedNow.slice(i, i + maxBatch)
 
       try {
-        const embeddings = process.env.NEXT_PUBLIC_ENV === 'Loc'
-          ? chunk.map(() => Array(1536).fill(Math.random() * 0.001))
-          : (
-              await openai.embeddings.create({
-                model: 'text-embedding-3-small',
-                input: chunk,
-              })
-            ).data.map(d => d.embedding)
+        const embeddings = isMock
+        ? chunk.map(() => Array(1536).fill(Math.random() * 0.001))
+        : (
+            await openai.embeddings.create({
+              model: 'text-embedding-3-small',
+              input: chunk,
+            })
+          ).data.map(d => d.embedding)
 
         for (let j = 0; j < embeddings.length; j++) {
           const { row, content, content_hash, prodotto } = rowsChunk[j]
