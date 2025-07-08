@@ -9,7 +9,7 @@ export function ChatInput() {
   const [input, setInput] = useState('')
 
   return (
-    <div className="sticky bottom-0 w-full border-t bg-background px-4 py-4">
+    <div className="sticky bottom-0 w-full border-t bg-background px-4 pt-4">
       <div className="max-w-3xl mx-auto relative">
         <Textarea
           placeholder="Scrivi qui la tua richiesta..."

@@ -14,7 +14,7 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
         className={cn(
           'max-w-[80%] rounded-2xl p-4 mb-4',
           isUser
-            ? 'bg-primary text-white rounded-br-none'
+            ? 'bg-primary text-white rounded-br-none dark:bg-white dark:text-black'
             : 'bg-muted text-muted-foreground rounded-bl-none'
         )}
       >
