@@ -13,4 +13,15 @@ export type Product = {
     content: string
     products?: Product[]
   }
+
+  export type ProductItem = {
+    sku: string
+    name: string
+    thumb_url: string
+    price: number
+    supplier: string
+    available: boolean
+    link?: string
+  }
+  
   
