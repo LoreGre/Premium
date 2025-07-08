@@ -113,11 +113,16 @@ export async function POST(req: Request) {
     }
 
     const rows = parseResult.data as RowCSV[]
-    const rowsToUpsert: EmbeddingRow[] = []
-    const rowsProdottiToUpsert: ProdottoRow[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
     const skippedError: { sku: string; reason: string }[] = []
+    const rowsToEmbed: {
+      content: string
+      content_hash: string
+      row: RowCSV
+      prodotto: Partial<ProdottoRow>
+    }[] = []
 
+    // 🔎 Filtro invalidi
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       const rowNumber = i + 2
@@ -132,12 +137,9 @@ export async function POST(req: Request) {
           sku: row.sku || null,
           message: reason,
         })
+        continue
       }
-    }
 
-    const filteredRows = rows.filter(r => r.sku && r.name).slice(0, 50)
-
-    for (const row of filteredRows) {
       const nome = row.name?.trim() || ''
       const descrizione = row.description?.trim() || ''
       const prezzo = row.unit_price?.trim() || ''
@@ -151,90 +153,107 @@ export async function POST(req: Request) {
         prezzo && `Prezzo: ${prezzo}€`,
         taglia && `Taglia: ${taglia}`,
         colore && `Colore: ${colore}`,
-        descrizione && descrizione
+        descrizione && descrizione,
       ].filter(Boolean)
 
       const content = chunks.join('. ')
       const content_hash = hashContent(content)
 
+      const prodotto: Partial<ProdottoRow> = {
+        sku: row.sku,
+        name: row.name,
+        fornitore,
+        updated_at: new Date().toISOString(),
+      }
+
+      const optionalFields = [
+        'description', 'unit_price', 'tier_price_1', 'tier_price_2', 'msrp',
+        'category_name', 'url_key', 'link', 'type', 'parent_sku',
+        'taglia', 'colore', 'configurable_attributes', 'weight',
+        'image', 'small_image', 'thumbnail', 'media_gallery',
+        'visibility', 'attribute_set'
+      ] as const
+
+      for (const field of optionalFields) {
+        const value = row[field]
+        if (value && typeof value === 'string') {
+          prodotto[field] = value.trim()
+        }
+      }
+
+      const numericFields: (keyof ProdottoRow)[] = ['tier_qty_1', 'tier_qty_2', 'qty_increments']
+      for (const field of numericFields) {
+        const raw = (row as Record<string, string | undefined>)[field]
+        if (raw && !isNaN(Number(raw))) {
+          (prodotto as Record<string, unknown>)[field] = Number(raw)
+        }
+      }
+
+      rowsToEmbed.push({ row, content, content_hash, prodotto })
+    }
+
+    // 🧠 Hash esistenti
+    const { data: existing } = await supabase
+      .from('embedding_prodotti')
+      .select('sku, content_hash')
+      .eq('fornitore', fornitore)
+
+    const hashMap = new Map((existing || []).map((r) => [r.sku, r.content_hash]))
+
+    const rowsToUpsert: EmbeddingRow[] = []
+    const rowsProdottiToUpsert: ProdottoRow[] = []
+
+    const toEmbedNow = rowsToEmbed.filter(r => {
+      const existingHash = hashMap.get(r.row.sku)
+      return existingHash !== r.content_hash
+    })
+
+    // ✨ EMBEDDING
+    const contentList = toEmbedNow.map((r) => r.content)
+    const maxBatch = 500
+
+    for (let i = 0; i < contentList.length; i += maxBatch) {
+      const chunk = contentList.slice(i, i + maxBatch)
+      const rowsChunk = toEmbedNow.slice(i, i + maxBatch)
+
       try {
-        const { data: existing } = await supabase
-          .from('embedding_prodotti')
-          .select('content_hash')
-          .eq('sku', row.sku)
-          .eq('fornitore', fornitore)
-          .single()
+        const embeddings = process.env.NEXT_PUBLIC_ENV === 'Loc'
+          ? chunk.map(() => Array(1536).fill(Math.random() * 0.001))
+          : (
+              await openai.embeddings.create({
+                model: 'text-embedding-3-small',
+                input: chunk,
+              })
+            ).data.map(d => d.embedding)
 
-        if (existing?.content_hash === content_hash) {
-          console.log(`🔁 SKU ${row.sku} non modificato, saltato`)
-          continue
-        }
+        for (let j = 0; j < embeddings.length; j++) {
+          const { row, content, content_hash, prodotto } = rowsChunk[j]
 
-        let embedding: number[] = []
-
-        if (process.env.NEXT_PUBLIC_ENV === 'Loc') {
-          embedding = Array(1536).fill(0.001 * Math.random())
-        } else {
-          const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: content,
+          rowsToUpsert.push({
+            fornitore,
+            content,
+            content_hash,
+            embedding: embeddings[j],
+            sku: row.sku,
+            updated_at: new Date().toISOString(),
           })
-          embedding = embeddingResponse.data[0].embedding
+
+          rowsProdottiToUpsert.push(prodotto as ProdottoRow)
         }
-
-        rowsToUpsert.push({
-          fornitore,
-          content,
-          content_hash,
-          embedding,
-          sku: row.sku,
-          updated_at: new Date().toISOString(),
-        })
-
-        const prodotto: Partial<ProdottoRow> = {
-          sku: row.sku,
-          name: row.name,
-          fornitore,
-          updated_at: new Date().toISOString(),
-        }
-
-        const optionalFields = [
-          'description', 'unit_price', 'tier_price_1', 'tier_price_2', 'msrp',
-          'category_name', 'url_key', 'link', 'type', 'parent_sku',
-          'taglia', 'colore', 'configurable_attributes', 'weight',
-          'image', 'small_image', 'thumbnail', 'media_gallery',
-          'visibility', 'attribute_set'
-        ] as const
-
-        for (const field of optionalFields) {
-          const value = row[field]
-          if (value && typeof value === 'string') {
-            prodotto[field] = value.trim()
-          }
-        }
-
-        const numericFields: (keyof ProdottoRow)[] = ['tier_qty_1', 'tier_qty_2', 'qty_increments']
-        for (const field of numericFields) {
-          const raw = (row as Record<string, string | undefined>)[field]
-          if (raw && !isNaN(Number(raw))) {
-            (prodotto as Record<string, unknown>)[field] = Number(raw)
-          }
-        }
-
-        rowsProdottiToUpsert.push(prodotto as ProdottoRow)
       } catch (err) {
-        const reason = err instanceof Error ? err.message : 'Errore generico'
-        console.error(`❌ Errore su SKU ${row.sku}:`, reason)
-        skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
-
-        await supabase.from('embedding_logs').insert({
-          fornitore,
-          filename,
-          type: 'embedding_error',
-          row_number: null,
-          sku: row.sku || null,
-          message: reason,
-        })
+        console.error(`❌ Errore embedding batch ${i}`, err)
+        for (let j = 0; j < chunk.length; j++) {
+          const row = rowsChunk[j].row
+          skippedError.push({ sku: row.sku, reason: 'Errore embedding batch' })
+          await supabase.from('embedding_logs').insert({
+            fornitore,
+            filename,
+            type: 'embedding_error',
+            row_number: null,
+            sku: row.sku,
+            message: 'Errore embedding batch',
+          })
+        }
       }
     }
 
@@ -247,8 +266,6 @@ export async function POST(req: Request) {
         console.error('❌ Errore upsert embedding_prodotti:', upsertError)
         return NextResponse.json({ error: 'Errore upsert embedding_prodotti' }, { status: 500 })
       }
-
-      console.log(`✅ Embedding completati: ${rowsToUpsert.length}`)
     }
 
     if (rowsProdottiToUpsert.length > 0) {
@@ -260,8 +277,6 @@ export async function POST(req: Request) {
         console.error('❌ Errore upsert prodotti:', prodottiError)
         return NextResponse.json({ error: 'Errore upsert prodotti' }, { status: 500 })
       }
-
-      console.log(`📦 Prodotti aggiornati: ${rowsProdottiToUpsert.length}`)
     }
 
     await supabase.from('embedding_logs').insert({
@@ -270,7 +285,7 @@ export async function POST(req: Request) {
       type: 'run_summary',
       row_number: null,
       sku: null,
-      message: `Run completata: ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
+      message: `Run completata: ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`,
     })
 
     return NextResponse.json({
