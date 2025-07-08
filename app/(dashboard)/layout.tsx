@@ -32,13 +32,17 @@ export default async function Layout({ children }: { children: React.ReactNode }
       <AppSidebar variant="inset" />
       <SidebarInset>
         <SiteHeader />
-        <div className="flex flex-1 flex-col overflow-hidden">
+
+        {/* ⚠️ Scroll solo dentro il main */}
+        <div className="flex flex-1 flex-col h-[100dvh] overflow-hidden">
           <main className="flex-1 overflow-y-auto">
             {children}
           </main>
+          {/* se vuoi reinserire il footer */}
           <SiteFooter />
         </div>
       </SidebarInset>
     </SidebarProvider>
   )
 }
+

@@ -9,19 +9,23 @@ export function ChatInput() {
   const [input, setInput] = useState('')
 
   return (
-    <div className="sticky bottom-0 w-full border-t px-4 py-4">
+    <div className="sticky bottom-0 w-full border-t bg-background px-4 py-4">
       <div className="max-w-3xl mx-auto relative">
         <Textarea
           placeholder="Scrivi qui la tua richiesta..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          className="min-h-[150px] resize-none pr-12 shadow-sm text-base py-4"
+          className="min-h-[120px] resize-none pr-12"
         />
         <Button
           size="icon"
-          className="absolute bottom-2 right-2 bg-black text-white hover:bg-black/80 rounded-full"
+          className="absolute bottom-2 right-2"
+          onClick={() => {
+            console.log('Messaggio:', input)
+            setInput('')
+          }}
         >
-          <ArrowUp className="w-4 h-4" />
+          <ArrowUp className="h-5 w-5" />
         </Button>
       </div>
     </div>

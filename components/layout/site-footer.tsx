@@ -1,13 +1,15 @@
 "use client"
 
 export function SiteFooter() {
+  const env = process.env.NEXT_PUBLIC_ENV?.toUpperCase()
+  const branch = process.env.NEXT_PUBLIC_GIT_COMMIT_REF
+  const commit = process.env.NEXT_PUBLIC_GIT_COMMIT_SHA
+
   return (
-    <footer className="w-full bottom-0 left-0 flex justify-center z-50 pb-2 pointer-events-none">
-      <div className="text-xs font-mono px-2 py-1 rounded bg-muted text-muted-foreground pointer-events-auto">
-        Ver: {process.env.NEXT_PUBLIC_ENV?.toUpperCase()} |
-        {" "}{process.env.NEXT_PUBLIC_GIT_COMMIT_REF} @
-        {" "}{process.env.NEXT_PUBLIC_GIT_COMMIT_SHA}
-      </div>
+    <footer className="w-full py-4 px-2 text-center text-xs text-muted-foreground font-mono">
+      <span className="inline-block rounded bg-muted px-2 py-1">
+        Ver: {env} | {branch} @ {commit?.slice(0, 7)}
+      </span>
     </footer>
   )
-} 
+}
