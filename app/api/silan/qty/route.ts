@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const fornitore = 'silan'
     const filename = 'silan_stock_price_full.csv'
 
-    // 📥 1. Scarica file da Supabase
+    // 1. Scarica file
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
     const text = await file.text()
 
-    // 📤 2. Parsea CSV
+    // 2. Parse CSV
     const parseResult = Papa.parse<RowQuantita>(text, {
       header: true,
       skipEmptyLines: true,
@@ -46,13 +46,12 @@ export async function POST(req: Request) {
     }
 
     const rawRows = parseResult.data
-    const batch: { sku: string; qty: number }[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
     const skippedError: { sku: string; reason: string }[] = []
+    let updated = 0
 
-    // 🧠 3. Costruisci batch
-    for (let i = 0; i < rawRows.length; i++) {
-      const row = rawRows[i]
+    // 3. Mappa SKU→qty validi
+    const validRows = rawRows.map((row, i) => {
       const rowNumber = i + 2
       const sku = row.sku?.trim()
       const qty = parseInt(row.qty)
@@ -60,46 +59,73 @@ export async function POST(req: Request) {
       if (!sku || isNaN(qty)) {
         const reason = !sku ? 'SKU mancante' : 'Quantità non valida'
         skippedInvalid.push({ row: rowNumber, reason })
+        return null
+      }
+
+      return { sku, qty, rowNumber }
+    }).filter(Boolean) as { sku: string; qty: number; rowNumber: number }[]
+
+    if (validRows.length === 0) {
+      return NextResponse.json({ success: false, updated: 0, skippedInvalid, skippedError })
+    }
+
+    // 4. Prendi tutti gli SKU esistenti
+    const { data: existingSkus } = await supabase
+      .from('prodotti')
+      .select('sku')
+
+    const skuSet = new Set((existingSkus || []).map((r) => r.sku))
+
+    // 5. Per ogni riga valida, aggiorna solo se SKU esiste
+    for (const row of validRows) {
+      if (!skuSet.has(row.sku)) {
+        skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
         await supabase.from('embedding_logs').insert({
           fornitore,
           filename,
           type: 'stock_error',
-          row_number: rowNumber,
-          sku: sku || null,
-          message: reason,
+          row_number: row.rowNumber,
+          sku: row.sku,
+          message: 'SKU non presente in tabella prodotti',
         })
         continue
       }
 
-      batch.push({ sku, qty })
+      const { error } = await supabase
+        .from('prodotti')
+        .update({ qty: row.qty })
+        .eq('sku', row.sku)
+
+      if (error) {
+        skippedError.push({ sku: row.sku, reason: error.message })
+        await supabase.from('embedding_logs').insert({
+          fornitore,
+          filename,
+          type: 'stock_error',
+          row_number: row.rowNumber,
+          sku: row.sku,
+          message: error.message,
+        })
+      } else {
+        updated++
+      }
     }
 
-    // 🗃 4. Upsert unico
-    const { error: upsertError } = await supabase
-      .from('prodotti')
-      .upsert(batch, { onConflict: 'sku' })
-
-    if (upsertError) {
-      console.error('❌ Errore upsert batch:', upsertError)
-      return NextResponse.json({ error: 'Errore upsert prodotti', details: upsertError }, { status: 500 })
-    }
-
-    // 📝 5. Logging finale
+    // 6. Log finale
     await supabase.from('embedding_logs').insert({
       fornitore,
       filename,
       type: 'stock_run_summary',
       row_number: null,
       sku: null,
-      message: `Run completata: ${batch.length} aggiornati, ${skippedInvalid.length} invalidi`,
+      message: `Run completata: ${updated} aggiornati, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`,
     })
 
-    // ✅ 6. Risposta finale
     return NextResponse.json({
       success: true,
-      updated: batch.length,
+      updated,
       skippedInvalid,
-      skippedError, // sempre vuoto in questa versione
+      skippedError,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore imprevisto'
