@@ -1,3 +1,5 @@
+'use server'
+
 import { NextResponse } from 'next/server'
 import { OpenAI } from 'openai'
 import Papa from 'papaparse'
@@ -13,12 +15,57 @@ type RowCSV = {
   name: string
   description?: string
   unit_price?: string
+  tier_qty_1?: string
+  tier_price_1?: string
+  tier_qty_2?: string
+  tier_price_2?: string
+  msrp?: string
+  qty_increments?: string
   category_name?: string
+  url_key?: string
+  link?: string
+  type?: string
+  parent_sku?: string
   taglia?: string
   colore?: string
-  parent_sku?: string
-  type?: string
+  configurable_attributes?: string
+  weight?: string
+  image?: string
+  small_image?: string
+  thumbnail?: string
+  media_gallery?: string
   visibility?: string
+  attribute_set?: string
+}
+
+type ProdottoRow = {
+  sku: string
+  name: string
+  description?: string
+  unit_price?: string
+  tier_qty_1?: number
+  tier_price_1?: string
+  tier_qty_2?: number
+  tier_price_2?: string
+  msrp?: string
+  qty_increments?: number
+  category_name?: string
+  url_key?: string
+  link?: string
+  type?: string
+  parent_sku?: string
+  taglia?: string
+  colore?: string
+  configurable_attributes?: string
+  weight?: string
+  image?: string
+  small_image?: string
+  thumbnail?: string
+  media_gallery?: string
+  visibility?: string
+  attribute_set?: string
+  fornitore: string
+  updated_at: string
 }
 
 type EmbeddingRow = {
@@ -27,21 +74,6 @@ type EmbeddingRow = {
   content_hash: string
   embedding: number[]
   sku: string
-  updated_at: string
-}
-
-type ProdottoRow = {
-  sku: string
-  name: string
-  description?: string
-  unit_price?: string
-  category_name?: string
-  taglia?: string
-  colore?: string
-  parent_sku?: string
-  type?: string
-  visibility?: string
-  fornitore: string
   updated_at: string
 }
 
@@ -121,7 +153,7 @@ export async function POST(req: Request) {
         colore && `Colore: ${colore}`,
         descrizione && descrizione
       ].filter(Boolean)
-      
+
       const content = chunks.join('. ')
       const content_hash = hashContent(content)
 
@@ -159,21 +191,37 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
 
-        rowsProdottiToUpsert.push({
+        const prodotto: Partial<ProdottoRow> = {
           sku: row.sku,
           name: row.name,
-          description: row.description,
-          unit_price: row.unit_price,
-          category_name: row.category_name,
-          taglia: row.taglia,
-          colore: row.colore,
-          parent_sku: row.parent_sku,
-          type: row.type,
-          visibility: row.visibility,
           fornitore,
           updated_at: new Date().toISOString(),
-        })
+        }
 
+        const optionalFields = [
+          'description', 'unit_price', 'tier_price_1', 'tier_price_2', 'msrp',
+          'category_name', 'url_key', 'link', 'type', 'parent_sku',
+          'taglia', 'colore', 'configurable_attributes', 'weight',
+          'image', 'small_image', 'thumbnail', 'media_gallery',
+          'visibility', 'attribute_set'
+        ] as const
+
+        for (const field of optionalFields) {
+          const value = row[field]
+          if (value && typeof value === 'string') {
+            prodotto[field] = value.trim()
+          }
+        }
+
+        const numericFields: (keyof ProdottoRow)[] = ['tier_qty_1', 'tier_qty_2', 'qty_increments']
+        for (const field of numericFields) {
+          const raw = (row as Record<string, string | undefined>)[field]
+          if (raw && !isNaN(Number(raw))) {
+            (prodotto as Record<string, unknown>)[field] = Number(raw)
+          }
+        }
+
+        rowsProdottiToUpsert.push(prodotto as ProdottoRow)
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'Errore generico'
         console.error(`❌ Errore su SKU ${row.sku}:`, reason)
