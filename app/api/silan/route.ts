@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { OpenAI } from 'openai'
 import Papa from 'papaparse'
 import crypto from 'crypto'
+import { Readable } from 'stream'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 function hashContent(content: string): string {
@@ -90,10 +91,9 @@ export async function POST(req: Request) {
     const filename = `${fornitore}_master_file_full.csv`
 
     const url = new URL(req.url)
-    const page = parseInt(url.searchParams.get('page') || '1', 10)
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10)
     const limit = parseInt(url.searchParams.get('limit') || '500', 10)
-    const start = (page - 1) * limit
-    const end = start + limit
+    const end = offset + limit
 
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
@@ -104,21 +104,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Errore download CSV' }, { status: 500 })
     }
 
-    const text = await file.text()
-    const parseResult = Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
+    const stream = Readable.fromWeb(file.stream() as any)
+    const rows: RowCSV[] = []
+    let rowIndex = 0
+
+    await new Promise((resolve, reject) => {
+      Papa.parse(stream, {
+        header: true,
+        skipEmptyLines: true,
+        step: (result) => {
+          if (rowIndex >= offset && rowIndex < end) {
+            rows.push(result.data as RowCSV)
+          }
+          rowIndex++
+          if (rowIndex >= end) {
+            resolve(null)
+          }
+        },
+        complete: () => resolve(null),
+        error: (err) => reject(err),
+      })
     })
 
-    if (parseResult.errors.length > 0) {
-      console.error('❌ Errori di parsing CSV:', parseResult.errors)
-      return NextResponse.json({
-        error: 'Parsing CSV fallito',
-        details: parseResult.errors,
-      }, { status: 400 })
-    }
-
-    const rows = (parseResult.data as RowCSV[]).slice(start, end)
     const rowsToUpsert: EmbeddingRow[] = []
     const rowsProdottiToUpsert: ProdottoRow[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
@@ -126,7 +133,7 @@ export async function POST(req: Request) {
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
-      const rowNumber = start + i + 2
+      const rowNumber = offset + i + 2
       if (!row.sku || !row.name) {
         const reason = !row.sku ? 'SKU mancante' : 'Name mancante'
         skippedInvalid.push({ row: rowNumber, reason })
@@ -177,7 +184,6 @@ export async function POST(req: Request) {
         }
 
         let embedding: number[] = []
-
         const mode = req.headers.get('x-mode')?.toLowerCase()
         const isMock = mode !== 'live'
 
@@ -256,8 +262,6 @@ export async function POST(req: Request) {
         console.error('❌ Errore upsert embedding_prodotti:', upsertError)
         return NextResponse.json({ error: 'Errore upsert embedding_prodotti' }, { status: 500 })
       }
-
-      console.log(`✅ Embedding completati: ${rowsToUpsert.length}`)
     }
 
     if (rowsProdottiToUpsert.length > 0) {
@@ -269,8 +273,6 @@ export async function POST(req: Request) {
         console.error('❌ Errore upsert prodotti:', prodottiError)
         return NextResponse.json({ error: 'Errore upsert prodotti' }, { status: 500 })
       }
-
-      console.log(`📦 Prodotti aggiornati: ${rowsProdottiToUpsert.length}`)
     }
 
     await supabase.from('embedding_logs').insert({
@@ -279,14 +281,19 @@ export async function POST(req: Request) {
       type: 'run_summary',
       row_number: null,
       sku: null,
-      message: `Run completata: ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
+      message: `Blocco da offset ${offset} a ${end} – ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
     })
+
+    const hasNext = rowIndex >= end
 
     return NextResponse.json({
       success: true,
       count: rowsToUpsert.length,
       skippedInvalid,
       skippedError,
+      next: hasNext,
+      offset,
+      nextOffset: hasNext ? end : null,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore imprevisto'
