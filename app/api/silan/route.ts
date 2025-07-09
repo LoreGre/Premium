@@ -89,6 +89,12 @@ export async function POST(req: Request) {
     const fornitore = 'silan'
     const filename = `${fornitore}_master_file_full.csv`
 
+    const url = new URL(req.url)
+    const page = parseInt(url.searchParams.get('page') || '1', 10)
+    const limit = parseInt(url.searchParams.get('limit') || '500', 10)
+    const start = (page - 1) * limit
+    const end = start + limit
+
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -112,7 +118,7 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    const rows = parseResult.data as RowCSV[]
+    const rows = (parseResult.data as RowCSV[]).slice(start, end)
     const rowsToUpsert: EmbeddingRow[] = []
     const rowsProdottiToUpsert: ProdottoRow[] = []
     const skippedInvalid: { row: number; reason: string }[] = []
@@ -120,7 +126,7 @@ export async function POST(req: Request) {
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
-      const rowNumber = i + 2
+      const rowNumber = start + i + 2
       if (!row.sku || !row.name) {
         const reason = !row.sku ? 'SKU mancante' : 'Name mancante'
         skippedInvalid.push({ row: rowNumber, reason })
@@ -135,7 +141,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const filteredRows = rows.filter(r => r.sku && r.name).slice(0, 50)
+    const filteredRows = rows.filter(r => r.sku && r.name)
 
     for (const row of filteredRows) {
       const nome = row.name?.trim() || ''
@@ -172,7 +178,10 @@ export async function POST(req: Request) {
 
         let embedding: number[] = []
 
-        if (process.env.NEXT_PUBLIC_ENV === 'Loc') {
+        const mode = req.headers.get('x-mode')?.toLowerCase()
+        const isMock = mode !== 'live'
+
+        if (isMock) {
           embedding = Array(1536).fill(0.001 * Math.random())
         } else {
           const embeddingResponse = await openai.embeddings.create({
