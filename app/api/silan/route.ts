@@ -1,3 +1,8 @@
+//curl -v -X POST 'http://premium.local:3000/api/silan?offset=0&limit=500' \
+//-H "x-api-key: PTgAhSKMzDAdicZjXOjjPZ33HFBzZJWssHX6egaHhQjdq0az7v9uRdllMBi349h6" \
+//-H "x-mode: live" \
+//-H "Content-Type: application/json"
+
 'use server'
 
 import { NextResponse } from 'next/server'
@@ -94,6 +99,10 @@ export async function POST(req: Request) {
     const offset = parseInt(url.searchParams.get('offset') || '0', 10)
     const limit = parseInt(url.searchParams.get('limit') || '500', 10)
     const end = offset + limit
+
+    console.time(`🟢 Batch offset ${offset}`)
+    console.log(`🟢 START – offset ${offset} / limit ${limit}`)
+
 
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
@@ -192,11 +201,27 @@ export async function POST(req: Request) {
         if (isMock) {
           embedding = Array(1536).fill(0.001 * Math.random())
         } else {
-          const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: content,
-          })
-          embedding = embeddingResponse.data[0].embedding
+          try {
+            const embeddingResponse = await openai.embeddings.create({
+              model: 'text-embedding-3-small',
+              input: content,
+            })
+            embedding = embeddingResponse.data[0].embedding
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : 'Errore embedding sconosciuto'
+            console.error(`❌ OpenAI error on SKU ${row.sku}:`, reason)
+            skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
+          
+            await supabase.from('embedding_logs').insert({
+              fornitore,
+              filename,
+              type: 'embedding_error',
+              row_number: null,
+              sku: row.sku || null,
+              message: reason,
+            })
+            continue // ⬅️ salta al prossimo SKU
+          }          
         }
 
         rowsToUpsert.push({
@@ -287,6 +312,9 @@ export async function POST(req: Request) {
     })
 
     const hasNext = rowIndex >= end
+
+    console.timeEnd(`🟢 Batch offset ${offset}`)
+    console.log(`✅ END – offset ${offset}`)
 
     return NextResponse.json({
       success: true,
