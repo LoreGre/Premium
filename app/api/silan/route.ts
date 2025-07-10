@@ -147,6 +147,7 @@ export async function POST(req: Request) {
       const rowNumber = offset + i + 2
       if (!row.sku || !row.name) {
         const reason = !row.sku ? 'SKU mancante' : 'Name mancante'
+        console.warn(`⚠️ Riga ${rowNumber} saltata: ${reason}`)
         skippedInvalid.push({ row: rowNumber, reason })
         await supabase.from('embedding_logs').insert({
           fornitore,
@@ -190,7 +191,7 @@ export async function POST(req: Request) {
           .single()
 
         if (existing?.content_hash === content_hash) {
-          console.log(`🔁 SKU ${row.sku} non modificato, saltato`)
+          console.warn(`⚠️ SKU ${row.sku} identico, nessun aggiornamento necessario`)
           continue
         }
 
@@ -200,6 +201,7 @@ export async function POST(req: Request) {
 
         if (isMock) {
           embedding = Array(1536).fill(0.001 * Math.random())
+          console.warn(`⚠️ SKU ${row.sku} – embedding mockato (x_mode diverso da live)`)
         } else {
           try {
             const embeddingResponse = await openai.embeddings.create({
@@ -211,7 +213,7 @@ export async function POST(req: Request) {
             const reason = err instanceof Error ? err.message : 'Errore embedding sconosciuto'
             console.error(`❌ OpenAI error on SKU ${row.sku}:`, reason)
             skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
-          
+
             await supabase.from('embedding_logs').insert({
               fornitore,
               filename,
@@ -220,8 +222,8 @@ export async function POST(req: Request) {
               sku: row.sku || null,
               message: reason,
             })
-            continue // ⬅️ salta al prossimo SKU
-          }          
+            continue
+          }
         }
 
         rowsToUpsert.push({
@@ -260,6 +262,8 @@ export async function POST(req: Request) {
           const raw = (row as Record<string, string | undefined>)[field]
           if (raw && !isNaN(Number(raw))) {
             (prodotto as Record<string, unknown>)[field] = Number(raw)
+          } else if (raw) {
+            console.warn(`⚠️ Campo ${field} non numerico su SKU ${row.sku}: "${raw}" ignorato`)
           }
         }
 
@@ -290,7 +294,7 @@ export async function POST(req: Request) {
       const { error: upsertError } = await supabase
         .from('embedding_prodotti')
         .upsert(deduplicatedEmbedding, { onConflict: 'fornitore,sku' })
-    
+
       if (upsertError) {
         console.error('❌ Errore upsert embedding_prodotti:', upsertError)
         return NextResponse.json({ error: 'Errore upsert embedding_prodotti' }, { status: 500 })
@@ -299,7 +303,7 @@ export async function POST(req: Request) {
 
     const uniqueProdottiMap = new Map<string, ProdottoRow>()
     for (const row of rowsProdottiToUpsert) {
-      uniqueProdottiMap.set(row.sku, row) // l'ultimo vince se SKU duplicato
+      uniqueProdottiMap.set(row.sku, row)
     }
     const deduplicatedProdotti = Array.from(uniqueProdottiMap.values())
 
@@ -307,7 +311,7 @@ export async function POST(req: Request) {
       const { error: prodottiError } = await supabase
         .from('prodotti')
         .upsert(deduplicatedProdotti, { onConflict: 'sku' })
-    
+
       if (prodottiError) {
         console.error('❌ Errore upsert prodotti:', prodottiError)
         return NextResponse.json({ error: 'Errore upsert prodotti' }, { status: 500 })

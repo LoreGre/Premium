@@ -1,4 +1,4 @@
-//curl -v -X POST 'http://premium.local:3000/api/silan/qty?limit=500' \
+//curl -v -X POST 'http://premium.local:3000/api/silan/qty?offset=0&limit=500' \
 //-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
 //-H "Content-Type: application/json"
 
@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   try {
     const apiKey = req.headers.get('x_api_key')
     if (apiKey !== process.env.PREMIUM_SECRET_TOKEN) {
+      console.warn('⚠️ Richiesta non autorizzata – token errato o mancante')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -26,7 +27,9 @@ export async function POST(req: Request) {
     const limit = parseInt(searchParams.get('limit') || '500')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // 1. Scarica file CSV
+    console.time(`🔄 Quantità offset ${offset}`)
+    console.log(`🟢 START – Aggiornamento quantità da offset ${offset}, limit ${limit}`)
+
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -38,7 +41,6 @@ export async function POST(req: Request) {
 
     const text = await file.text()
 
-    // 2. Parse CSV
     const parseResult = Papa.parse<RowQuantita>(text, {
       header: true,
       skipEmptyLines: true,
@@ -67,6 +69,7 @@ export async function POST(req: Request) {
 
       if (!sku || isNaN(qty)) {
         const reason = !sku ? 'SKU mancante' : 'Quantità non valida'
+        console.warn(`⚠️ Riga ${rowNumber} ignorata – ${reason}`)
         skippedInvalid.push({ row: rowNumber, reason })
         return null
       }
@@ -74,16 +77,20 @@ export async function POST(req: Request) {
       return { sku, qty, rowNumber }
     }).filter(Boolean) as { sku: string; qty: number; rowNumber: number }[]
 
-    // 3. Prendi tutti gli SKU
-    const { data: existingSkus } = await supabase
+    const { data: existingSkus, error: skusError } = await supabase
       .from('prodotti')
       .select('sku')
 
-    const skuSet = new Set((existingSkus || []).map((r) => r.sku))
+    if (skusError || !existingSkus) {
+      console.error('❌ Errore nel recupero SKU da prodotti:', skusError)
+      return NextResponse.json({ error: 'Errore nel recupero SKU da prodotti' }, { status: 500 })
+    }
 
-    // 4. Update
+    const skuSet = new Set(existingSkus.map((r) => r.sku))
+
     for (const row of validRows) {
       if (!skuSet.has(row.sku)) {
+        console.warn(`⚠️ SKU ${row.sku} non trovato in tabella prodotti`)
         skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
         await supabase.from('embedding_logs').insert({
           fornitore,
@@ -102,6 +109,7 @@ export async function POST(req: Request) {
         .eq('sku', row.sku)
 
       if (error) {
+        console.error(`❌ Errore aggiornamento SKU ${row.sku}:`, error.message)
         skippedError.push({ sku: row.sku, reason: error.message })
         await supabase.from('embedding_logs').insert({
           fornitore,
@@ -113,14 +121,13 @@ export async function POST(req: Request) {
         })
       } else {
         updated++
+        console.log(`✅ SKU ${row.sku} aggiornato a qty ${row.qty}`)
       }
     }
 
-    // 5. Fine
     const nextOffset = offset + limit
     const next = nextOffset < allRows.length
 
-    // 6. Log finale
     await supabase.from('embedding_logs').insert({
       fornitore,
       filename,
@@ -129,7 +136,10 @@ export async function POST(req: Request) {
       sku: null,
       message: `Run completata: ${updated} aggiornati, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`,
     })
-    
+
+    console.timeEnd(`🔄 Quantità offset ${offset}`)
+    console.log(`✅ FINE – offset ${offset} – ${updated} aggiornati – next: ${next}`)
+
     return NextResponse.json({
       success: true,
       updated,
