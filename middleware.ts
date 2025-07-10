@@ -8,7 +8,11 @@ export async function middleware(req: NextRequest) {
     request: { headers: req.headers }
   })
 
-  const cookieStorage = await nextCookiesAdapter()
+  // Adapter read-only per i cookie
+  const cookieStorage = {
+    getAll: () => req.cookies.getAll().map(({ name, value }) => ({ name, value })),
+    setAll: () => {} // NO-OP: non fa nulla!
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
