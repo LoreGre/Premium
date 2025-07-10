@@ -1,6 +1,6 @@
 //curl -v -X POST 'http://premium.local:3000/api/silan?offset=0&limit=500' \
-//-H "x-api-key: PTgAhSKMzDAdicZjXOjjPZ33HFBzZJWssHX6egaHhQjdq0az7v9uRdllMBi349h6" \
-//-H "x-mode: live" \
+//-H "x_api_key: PTgAhSKMzDAdicZjXOjjPZ33HFBzZJWssHX6egaHhQjdq0az7v9uRdllMBi349h6" \
+//-H "x_mode: live" \
 //-H "Content-Type: application/json"
 
 'use server'
@@ -85,8 +85,8 @@ type EmbeddingRow = {
 
 export async function POST(req: Request) {
   try {
-    const apiKey = req.headers.get('x-api-key')
-    if (apiKey !== process.env.EMBEDDING_SECRET_TOKEN) {
+    const apiKey = req.headers.get('x_api_key')
+    if (apiKey !== process.env.PREMIUM_SECRET_TOKEN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -195,7 +195,7 @@ export async function POST(req: Request) {
         }
 
         let embedding: number[] = []
-        const mode = req.headers.get('x-mode')?.toLowerCase()
+        const mode = req.headers.get('x_mode')?.toLowerCase()
         const isMock = mode !== 'live'
 
         if (isMock) {
