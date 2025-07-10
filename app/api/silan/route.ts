@@ -1,5 +1,5 @@
 //curl -v -X POST 'http://premium.local:3000/api/silan?offset=0&limit=500' \
-//-H "x_api_key: PTgAhSKMzDAdicZjXOjjPZ33HFBzZJWssHX6egaHhQjdq0az7v9uRdllMBi349h6" \
+//-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
 //-H "x_mode: live" \
 //-H "Content-Type: application/json"
 
@@ -280,22 +280,34 @@ export async function POST(req: Request) {
       }
     }
 
-    if (rowsToUpsert.length > 0) {
+    const uniqueEmbeddingMap = new Map<string, EmbeddingRow>()
+    for (const row of rowsToUpsert) {
+      uniqueEmbeddingMap.set(`${row.fornitore}__${row.sku}`, row)
+    }
+    const deduplicatedEmbedding = Array.from(uniqueEmbeddingMap.values())
+
+    if (deduplicatedEmbedding.length > 0) {
       const { error: upsertError } = await supabase
         .from('embedding_prodotti')
-        .upsert(rowsToUpsert, { onConflict: 'fornitore,sku' })
-
+        .upsert(deduplicatedEmbedding, { onConflict: 'fornitore,sku' })
+    
       if (upsertError) {
         console.error('❌ Errore upsert embedding_prodotti:', upsertError)
         return NextResponse.json({ error: 'Errore upsert embedding_prodotti' }, { status: 500 })
       }
     }
 
-    if (rowsProdottiToUpsert.length > 0) {
+    const uniqueProdottiMap = new Map<string, ProdottoRow>()
+    for (const row of rowsProdottiToUpsert) {
+      uniqueProdottiMap.set(row.sku, row) // l'ultimo vince se SKU duplicato
+    }
+    const deduplicatedProdotti = Array.from(uniqueProdottiMap.values())
+
+    if (deduplicatedProdotti.length > 0) {
       const { error: prodottiError } = await supabase
         .from('prodotti')
-        .upsert(rowsProdottiToUpsert, { onConflict: 'sku' })
-
+        .upsert(deduplicatedProdotti, { onConflict: 'sku' })
+    
       if (prodottiError) {
         console.error('❌ Errore upsert prodotti:', prodottiError)
         return NextResponse.json({ error: 'Errore upsert prodotti' }, { status: 500 })

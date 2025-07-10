@@ -1,3 +1,7 @@
+//curl -v -X POST 'http://premium.local:3000/api/silan/qty?limit=500' \
+//-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
+//-H "Content-Type: application/json"
+
 import { NextResponse } from 'next/server'
 import Papa from 'papaparse'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -9,8 +13,8 @@ type RowQuantita = {
 
 export async function POST(req: Request) {
   try {
-    const apiKey = req.headers.get('x-api-key')
-    if (apiKey !== process.env.EMBEDDING_SECRET_TOKEN) {
+    const apiKey = req.headers.get('x_api_key')
+    if (apiKey !== process.env.PREMIUM_SECRET_TOKEN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -18,7 +22,11 @@ export async function POST(req: Request) {
     const fornitore = 'silan'
     const filename = 'silan_stock_price_full.csv'
 
-    // 1. Scarica file
+    const { searchParams } = new URL(req.url)
+    const limit = parseInt(searchParams.get('limit') || '500')
+    const offset = parseInt(searchParams.get('offset') || '0')
+
+    // 1. Scarica file CSV
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -45,14 +53,15 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    const rawRows = parseResult.data
+    const allRows = parseResult.data
+    const slice = allRows.slice(offset, offset + limit)
+
     const skippedInvalid: { row: number; reason: string }[] = []
     const skippedError: { sku: string; reason: string }[] = []
     let updated = 0
 
-    // 3. Mappa SKU→qty validi
-    const validRows = rawRows.map((row, i) => {
-      const rowNumber = i + 2
+    const validRows = slice.map((row, i) => {
+      const rowNumber = offset + i + 2
       const sku = row.sku?.trim()
       const qty = parseInt(row.qty)
 
@@ -65,18 +74,14 @@ export async function POST(req: Request) {
       return { sku, qty, rowNumber }
     }).filter(Boolean) as { sku: string; qty: number; rowNumber: number }[]
 
-    if (validRows.length === 0) {
-      return NextResponse.json({ success: false, updated: 0, skippedInvalid, skippedError })
-    }
-
-    // 4. Prendi tutti gli SKU esistenti
+    // 3. Prendi tutti gli SKU
     const { data: existingSkus } = await supabase
       .from('prodotti')
       .select('sku')
 
     const skuSet = new Set((existingSkus || []).map((r) => r.sku))
 
-    // 5. Per ogni riga valida, aggiorna solo se SKU esiste
+    // 4. Update
     for (const row of validRows) {
       if (!skuSet.has(row.sku)) {
         skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
@@ -111,6 +116,10 @@ export async function POST(req: Request) {
       }
     }
 
+    // 5. Fine
+    const nextOffset = offset + limit
+    const next = nextOffset < allRows.length
+
     // 6. Log finale
     await supabase.from('embedding_logs').insert({
       fornitore,
@@ -120,12 +129,14 @@ export async function POST(req: Request) {
       sku: null,
       message: `Run completata: ${updated} aggiornati, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`,
     })
-
+    
     return NextResponse.json({
       success: true,
       updated,
       skippedInvalid,
       skippedError,
+      next,
+      nextOffset: next ? nextOffset : null,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore imprevisto'
