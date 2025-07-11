@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     const slice = allRows.slice(offset, offset + limit)
 
     const skippedInvalid: { row: number; reason: string }[] = []
-    const skippedError: { sku: string; reason: string }[] = []
+    const skippedError: { sku: string | null; reason: string }[] = []
     let updated = 0
 
     const validRows = slice.map((row, i) => {
@@ -88,40 +88,67 @@ export async function POST(req: Request) {
 
     const skuSet = new Set(existingSkus.map((r) => r.sku))
 
-    for (const row of validRows) {
-      if (!skuSet.has(row.sku)) {
-        console.warn(`⚠️ SKU ${row.sku} non trovato in tabella prodotti`)
-        skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
+    const validRowsEsistenti = validRows.filter((row) => skuSet.has(row.sku))
+    const validRowsMancanti = validRows.filter((row) => !skuSet.has(row.sku))
+
+    // ⚠️ SKU non trovati: logga ognuno
+    for (const row of validRowsMancanti) {
+      skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
+      await supabase.from('embedding_logs').insert({
+        fornitore,
+        filename,
+        type: 'stock_error',
+        row_number: row.rowNumber,
+        sku: row.sku,
+        message: 'SKU non presente in tabella prodotti',
+      })
+    }
+
+    // ❌ Righe non valide: logga ognuna
+    for (const row of skippedInvalid) {
+      await supabase.from('embedding_logs').insert({
+        fornitore,
+        filename,
+        type: 'stock_invalid',
+        row_number: row.row,
+        sku: null,
+        message: row.reason,
+      })
+    }
+
+    // ✅ Aggiorna in batch gli SKU validi
+    const { error: upsertError } = await supabase
+      .from('prodotti')
+      .upsert(
+        validRowsEsistenti.map(({ sku, qty }) => ({ sku, qty })),
+        { onConflict: 'sku' }
+      )
+
+    if (upsertError) {
+      console.error('❌ Errore batch update:', upsertError.message)
+      skippedError.push({ sku: null, reason: upsertError.message })
+
+      await supabase.from('embedding_logs').insert({
+        fornitore,
+        filename,
+        type: 'stock_error',
+        row_number: null,
+        sku: null,
+        message: `Errore batch update: ${upsertError.message}`,
+      })
+    } else {
+      updated = validRowsEsistenti.length
+      console.log(`✅ ${updated} SKU aggiornati con upsert`)
+
+      for (const row of validRowsEsistenti) {
         await supabase.from('embedding_logs').insert({
           fornitore,
           filename,
-          type: 'stock_error',
+          type: 'stock_success',
           row_number: row.rowNumber,
           sku: row.sku,
-          message: 'SKU non presente in tabella prodotti',
+          message: `Quantità aggiornata: ${row.qty}`,
         })
-        continue
-      }
-
-      const { error } = await supabase
-        .from('prodotti')
-        .update({ qty: row.qty })
-        .eq('sku', row.sku)
-
-      if (error) {
-        console.error(`❌ Errore aggiornamento SKU ${row.sku}:`, error.message)
-        skippedError.push({ sku: row.sku, reason: error.message })
-        await supabase.from('embedding_logs').insert({
-          fornitore,
-          filename,
-          type: 'stock_error',
-          row_number: row.rowNumber,
-          sku: row.sku,
-          message: error.message,
-        })
-      } else {
-        updated++
-        console.log(`✅ SKU ${row.sku} aggiornato a qty ${row.qty}`)
       }
     }
 
