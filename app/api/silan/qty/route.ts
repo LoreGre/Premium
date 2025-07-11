@@ -117,30 +117,28 @@ export async function POST(req: Request) {
     }
 
     // ✅ Aggiorna in batch gli SKU validi
-    const { error: upsertError } = await supabase
-      .from('prodotti')
-      .upsert(
-        validRowsEsistenti.map(({ sku, qty }) => ({ sku, qty })),
-        { onConflict: 'sku' }
-      )
-
-    if (upsertError) {
-      console.error('❌ Errore batch update:', upsertError.message)
-      skippedError.push({ sku: null, reason: upsertError.message })
-
-      await supabase.from('embedding_logs').insert({
-        fornitore,
-        filename,
-        type: 'stock_error',
-        row_number: null,
-        sku: null,
-        message: `Errore batch update: ${upsertError.message}`,
-      })
-    } else {
-      updated = validRowsEsistenti.length
-      console.log(`✅ ${updated} SKU aggiornati con upsert`)
-
-      for (const row of validRowsEsistenti) {
+    for (const row of validRowsEsistenti) {
+      const { error } = await supabase
+        .from('prodotti')
+        .update({ qty: row.qty })
+        .eq('sku', row.sku)
+    
+      if (error) {
+        console.error(`❌ Errore aggiornamento SKU ${row.sku}:`, error.message)
+        skippedError.push({ sku: row.sku, reason: error.message })
+    
+        await supabase.from('embedding_logs').insert({
+          fornitore,
+          filename,
+          type: 'stock_error',
+          row_number: row.rowNumber,
+          sku: row.sku,
+          message: error.message,
+        })
+      } else {
+        updated++
+        console.log(`✅ SKU ${row.sku} aggiornato a qty ${row.qty}`)
+    
         await supabase.from('embedding_logs').insert({
           fornitore,
           filename,
@@ -150,7 +148,7 @@ export async function POST(req: Request) {
           message: `Quantità aggiornata: ${row.qty}`,
         })
       }
-    }
+    }    
 
     const nextOffset = offset + limit
     const next = nextOffset < allRows.length
