@@ -117,20 +117,24 @@ export async function POST(req: Request) {
     let rowIndex = 0
 
     await new Promise((resolve, reject) => {
+      const allRows: RowCSV[] = []
+    
       Papa.parse(stream, {
         header: true,
         skipEmptyLines: true,
-        step: (result) => {
-          if (rowIndex >= offset && rowIndex < end) {
-            rows.push(result.data as RowCSV)
-          }
-          rowIndex++
-          if (rowIndex >= end) resolve(null)
+        complete: (results) => {
+          const data = results.data as RowCSV[]
+          const slice = data.slice(offset, offset + limit)
+          rows.push(...slice)
+          console.log(`📦 Letti ${data.length} totali, batch: ${slice.length} da offset ${offset}`)
+          resolve(null)
         },
-        complete: () => resolve(null),
-        error: (err) => reject(err),
+        error: (err) => {
+          console.error('❌ Errore parsing CSV:', err)
+          reject(err)
+        }
       })
-    })
+    })    
 
     const rowsToUpsert: EmbeddingRow[] = []
     const rowsProdottiToUpsert: ProdottoRow[] = []
@@ -333,6 +337,7 @@ export async function POST(req: Request) {
       next: hasNext,
       offset,
       nextOffset: hasNext ? end : null,
+      limit,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore imprevisto'
