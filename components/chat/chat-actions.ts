@@ -10,44 +10,48 @@ const openai = new OpenAI()
 
 // 1. Crea una nuova sessione
 export async function createChatSession(userId?: string) {
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .insert([{ user_id: userId ?? null }])
-    .select('id')
-    .single()
-
-  if (error) throw new Error(`Errore creazione sessione: ${error.message}`)
-  return data.id as string
-}
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert([{ user_id: userId ?? null }])
+      .select('id')
+      .single()
+  
+    if (error) throw new Error(`Errore creazione sessione: ${error.message}`)
+    return data.id as string
+  }  
 
 // 2. Salva un messaggio (user o assistant)
 export async function saveMessage({
-  sessionId,
-  role,
-  content,
-  embedding
-}: {
-  sessionId: string
-  role: 'user' | 'assistant'
-  content: string
-  embedding?: number[]
-}) {
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert([
-      {
-        session_id: sessionId,
-        role,
-        content,
-        embedding
-      }
-    ])
-    .select('id')
-    .single()
-
-  if (error) throw new Error(`Errore salvataggio messaggio: ${error.message}`)
-  return data.id as string
-}
+    sessionId,
+    role,
+    content,
+    embedding,
+    userId
+  }: {
+    sessionId: string
+    role: 'user' | 'assistant'
+    content: string
+    embedding?: number[]
+    userId?: string
+  }) {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert([
+        {
+          session_id: sessionId,
+          user_id: userId ?? null,
+          role,
+          content,
+          embedding
+        }
+      ])
+      .select('id')
+      .single()
+  
+    if (error) throw new Error(`Errore salvataggio messaggio: ${error.message}`)
+    return data.id as string
+  }
+  
 
 // 3. Salva prodotti suggeriti associati a un messaggio
 export async function saveMessageProducts(messageId: string, skus: string[]) {

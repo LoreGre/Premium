@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { createChatSession } from './chat-actions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
 import { ProductBubble } from './chat-product-bubble'
 import { sendChatMessage } from './chat-api'
 import type { ChatMessage } from './types'
-import { v4 as uuidv4 } from 'uuid'
 
 export function ChatContainer() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -19,12 +20,28 @@ export function ChatContainer() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Crea sessione se non presente
   useEffect(() => {
-    const id = localStorage.getItem('chat_session_id') || uuidv4()
-    localStorage.setItem('chat_session_id', id)
-    setSessionId(id)
-  }, [])
+    const supabase = createClient()
+    let active = true
+  
+    const initSession = async () => {
+      const { data, error } = await supabase.auth.getUser()
+  
+      if (error || !data?.user) {
+        console.error('Utente non autenticato')
+        return
+      }
+  
+      const sessionId = await createChatSession(data.user.id)
+      if (active) setSessionId(sessionId)
+    }
+  
+    initSession()
+  
+    return () => {
+      active = false
+    }
+  }, [])  
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || !sessionId) return
