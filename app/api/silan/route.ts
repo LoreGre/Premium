@@ -111,7 +111,7 @@ export async function POST(req: Request) {
       console.error('❌ Errore download CSV:', downloadError)
       return NextResponse.json({ error: 'Errore download CSV' }, { status: 500 })
     }
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream = Readable.fromWeb(file.stream() as any)
     const rows: RowCSV[] = []
     let rowIndex = 0
