@@ -138,15 +138,6 @@ export async function POST(req: Request) {
       } else {
         updated++
         console.log(`✅ SKU ${row.sku} aggiornato a qty ${row.qty}`)
-    
-        await supabase.from('embedding_logs').insert({
-          fornitore,
-          filename,
-          type: 'stock_success',
-          row_number: row.rowNumber,
-          sku: row.sku,
-          message: `Quantità aggiornata: ${row.qty}`,
-        })
       }
     }    
 
