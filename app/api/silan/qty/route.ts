@@ -1,7 +1,6 @@
 //curl -v -X POST 'http://premium.local:3000/api/silan/qty?offset=0&limit=500' \
 //-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
 //-H "Content-Type: application/json"
-
 import { NextResponse } from 'next/server'
 import Papa from 'papaparse'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -64,7 +63,7 @@ export async function POST(req: Request) {
 
     const validRows = slice.map((row, i) => {
       const rowNumber = offset + i + 2
-      const sku = row.sku?.trim()
+      const sku = row.sku?.trim().toUpperCase()
       const qty = parseInt(row.qty)
 
       if (!sku || isNaN(qty)) {
@@ -86,12 +85,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Errore nel recupero SKU da prodotti' }, { status: 500 })
     }
 
-    const skuSet = new Set(existingSkus.map((r) => r.sku))
+    const skuSet = new Set(
+      existingSkus
+        .map((r) => r.sku?.trim().toUpperCase())
+        .filter(Boolean)
+    )
 
     const validRowsEsistenti = validRows.filter((row) => skuSet.has(row.sku))
     const validRowsMancanti = validRows.filter((row) => !skuSet.has(row.sku))
 
-    // ⚠️ SKU non trovati: logga ognuno
     for (const row of validRowsMancanti) {
       skippedError.push({ sku: row.sku, reason: 'SKU non presente in tabella prodotti' })
       await supabase.from('embedding_logs').insert({
@@ -104,7 +106,6 @@ export async function POST(req: Request) {
       })
     }
 
-    // ❌ Righe non valide: logga ognuna
     for (const row of skippedInvalid) {
       await supabase.from('embedding_logs').insert({
         fornitore,
@@ -116,17 +117,16 @@ export async function POST(req: Request) {
       })
     }
 
-    // ✅ Aggiorna in batch gli SKU validi
     for (const row of validRowsEsistenti) {
       const { error } = await supabase
         .from('prodotti')
         .update({ qty: row.qty })
         .eq('sku', row.sku)
-    
+
       if (error) {
         console.error(`❌ Errore aggiornamento SKU ${row.sku}:`, error.message)
         skippedError.push({ sku: row.sku, reason: error.message })
-    
+
         await supabase.from('embedding_logs').insert({
           fornitore,
           filename,
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
         updated++
         console.log(`✅ SKU ${row.sku} aggiornato a qty ${row.qty}`)
       }
-    }    
+    }
 
     const nextOffset = offset + limit
     const next = nextOffset < allRows.length
