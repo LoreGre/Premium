@@ -1,3 +1,4 @@
+import { createClient } from '@/lib/supabase/client'
 import type { ProductItem } from './types'
 
 export async function sendChatMessage(
@@ -7,9 +8,23 @@ export async function sendChatMessage(
   content: string
   products?: ProductItem[]
 }> {
+  const supabase = createClient()
+
+  const {
+    data: { session },
+    error
+  } = await supabase.auth.getSession()
+
+  if (error || !session?.access_token) {
+    throw new Error('Utente non autenticato')
+  }
+
   const res = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`
+    },
     body: JSON.stringify({ message, sessionId })
   })
 
