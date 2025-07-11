@@ -113,11 +113,10 @@ export async function POST(req: Request) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream = Readable.fromWeb(file.stream() as any)
+
     const rows: RowCSV[] = []
-    let rowIndex = 0
 
     await new Promise((resolve, reject) => {
-      const allRows: RowCSV[] = []
     
       Papa.parse(stream, {
         header: true,
@@ -324,7 +323,7 @@ export async function POST(req: Request) {
       message: `Blocco da offset ${offset} a ${end} – ${rowsToUpsert.length} embedding, ${skippedInvalid.length} invalidi, ${skippedError.length} errori`
     })
 
-    const hasNext = rowIndex >= end
+    const hasNext = rows.length === limit
 
     console.timeEnd(`🟢 Batch offset ${offset}`)
     console.log(`✅ END – offset ${offset}`)
