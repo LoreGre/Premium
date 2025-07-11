@@ -1,9 +1,11 @@
 //curl -v -X POST 'http://premium.local:3000/api/silan/qty?offset=0&limit=500' \
 //-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
 //-H "Content-Type: application/json"
+
 import { NextResponse } from 'next/server'
 import Papa from 'papaparse'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { normalizeSku } from '@/lib/utils'
 
 type RowQuantita = {
   sku: string
@@ -39,7 +41,6 @@ export async function POST(req: Request) {
     }
 
     const text = await file.text()
-
     const parseResult = Papa.parse<RowQuantita>(text, {
       header: true,
       skipEmptyLines: true,
@@ -61,20 +62,23 @@ export async function POST(req: Request) {
     const skippedError: { sku: string | null; reason: string }[] = []
     let updated = 0
 
-    const validRows = slice.map((row, i) => {
-      const rowNumber = offset + i + 2
-      const sku = row.sku?.trim().toUpperCase()
-      const qty = parseInt(row.qty)
+    const validRows = slice
+      .map((row, i) => {
+        const rowNumber = offset + i + 2
+        const rawSku = row.sku || ''
+        const normalizedSku = normalizeSku(rawSku)
+        const qty = parseInt(row.qty)
 
-      if (!sku || isNaN(qty)) {
-        const reason = !sku ? 'SKU mancante' : 'Quantità non valida'
-        console.warn(`⚠️ Riga ${rowNumber} ignorata – ${reason}`)
-        skippedInvalid.push({ row: rowNumber, reason })
-        return null
-      }
+        if (!normalizedSku || isNaN(qty)) {
+          const reason = !normalizedSku ? 'SKU mancante' : 'Quantità non valida'
+          console.warn(`⚠️ Riga ${rowNumber} ignorata – ${reason}`)
+          skippedInvalid.push({ row: rowNumber, reason })
+          return null
+        }
 
-      return { sku, qty, rowNumber }
-    }).filter(Boolean) as { sku: string; qty: number; rowNumber: number }[]
+        return { sku: normalizedSku, qty, rowNumber }
+      })
+      .filter(Boolean) as { sku: string; qty: number; rowNumber: number }[]
 
     const { data: existingSkus, error: skusError } = await supabase
       .from('prodotti')
@@ -87,7 +91,7 @@ export async function POST(req: Request) {
 
     const skuSet = new Set(
       existingSkus
-        .map((r) => r.sku?.trim().toUpperCase())
+        .map((r) => normalizeSku(r.sku || ''))
         .filter(Boolean)
     )
 

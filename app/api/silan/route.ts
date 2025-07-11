@@ -2,7 +2,6 @@
 //-H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl" \
 //-H "x_mode: live" \
 //-H "Content-Type: application/json"
-
 'use server'
 
 import { NextResponse } from 'next/server'
@@ -11,6 +10,7 @@ import Papa from 'papaparse'
 import crypto from 'crypto'
 import { Readable } from 'stream'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { normalizeSku } from '@/lib/utils' // ✅ nuova funzione centralizzata
 
 function hashContent(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex')
@@ -103,7 +103,6 @@ export async function POST(req: Request) {
     console.time(`🟢 Batch offset ${offset}`)
     console.log(`🟢 START – offset ${offset} / limit ${limit}`)
 
-
     const { data: file, error: downloadError } = await supabase.storage
       .from('csv-files')
       .download(filename)
@@ -113,9 +112,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Errore download CSV' }, { status: 500 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream = Readable.fromWeb(file.stream() as any)
-
     const rows: RowCSV[] = []
     let rowIndex = 0
 
@@ -128,9 +125,7 @@ export async function POST(req: Request) {
             rows.push(result.data as RowCSV)
           }
           rowIndex++
-          if (rowIndex >= end) {
-            resolve(null)
-          }
+          if (rowIndex >= end) resolve(null)
         },
         complete: () => resolve(null),
         error: (err) => reject(err),
@@ -163,6 +158,7 @@ export async function POST(req: Request) {
     const filteredRows = rows.filter(r => r.sku && r.name)
 
     for (const row of filteredRows) {
+      const sku = normalizeSku(row.sku)
       const nome = row.name?.trim() || ''
       const descrizione = row.description?.trim() || ''
       const prezzo = row.unit_price?.trim() || ''
@@ -186,12 +182,12 @@ export async function POST(req: Request) {
         const { data: existing } = await supabase
           .from('embedding_prodotti')
           .select('content_hash')
-          .eq('sku', row.sku)
+          .eq('sku', sku)
           .eq('fornitore', fornitore)
           .single()
 
         if (existing?.content_hash === content_hash) {
-          console.warn(`⚠️ SKU ${row.sku} identico, nessun aggiornamento necessario`)
+          console.warn(`⚠️ SKU ${sku} identico, nessun aggiornamento necessario`)
           continue
         }
 
@@ -201,7 +197,7 @@ export async function POST(req: Request) {
 
         if (isMock) {
           embedding = Array(1536).fill(0.001 * Math.random())
-          console.warn(`⚠️ SKU ${row.sku} – embedding mockato (x_mode diverso da live)`)
+          console.warn(`⚠️ SKU ${sku} – embedding mockato (x_mode diverso da live)`)
         } else {
           try {
             const embeddingResponse = await openai.embeddings.create({
@@ -211,15 +207,14 @@ export async function POST(req: Request) {
             embedding = embeddingResponse.data[0].embedding
           } catch (err) {
             const reason = err instanceof Error ? err.message : 'Errore embedding sconosciuto'
-            console.error(`❌ OpenAI error on SKU ${row.sku}:`, reason)
-            skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
-
+            console.error(`❌ OpenAI error on SKU ${sku}:`, reason)
+            skippedError.push({ sku, reason })
             await supabase.from('embedding_logs').insert({
               fornitore,
               filename,
               type: 'embedding_error',
               row_number: null,
-              sku: row.sku || null,
+              sku,
               message: reason,
             })
             continue
@@ -231,12 +226,12 @@ export async function POST(req: Request) {
           content,
           content_hash,
           embedding,
-          sku: row.sku,
+          sku,
           updated_at: new Date().toISOString(),
         })
 
         const prodotto: Partial<ProdottoRow> = {
-          sku: row.sku,
+          sku,
           name: row.name,
           fornitore,
           updated_at: new Date().toISOString(),
@@ -262,8 +257,6 @@ export async function POST(req: Request) {
           const raw = (row as Record<string, string | undefined>)[field]
           if (raw && !isNaN(Number(raw))) {
             (prodotto as Record<string, unknown>)[field] = Number(raw)
-          } else if (raw) {
-            console.warn(`⚠️ Campo ${field} non numerico su SKU ${row.sku}: "${raw}" ignorato`)
           }
         }
 
@@ -272,7 +265,6 @@ export async function POST(req: Request) {
         const reason = err instanceof Error ? err.message : 'Errore generico'
         console.error(`❌ Errore su SKU ${row.sku}:`, reason)
         skippedError.push({ sku: row.sku || '(sconosciuto)', reason })
-
         await supabase.from('embedding_logs').insert({
           fornitore,
           filename,
@@ -288,7 +280,14 @@ export async function POST(req: Request) {
     for (const row of rowsToUpsert) {
       uniqueEmbeddingMap.set(`${row.fornitore}__${row.sku}`, row)
     }
+
+    const uniqueProdottiMap = new Map<string, ProdottoRow>()
+    for (const row of rowsProdottiToUpsert) {
+      uniqueProdottiMap.set(row.sku, row)
+    }
+
     const deduplicatedEmbedding = Array.from(uniqueEmbeddingMap.values())
+    const deduplicatedProdotti = Array.from(uniqueProdottiMap.values())
 
     if (deduplicatedEmbedding.length > 0) {
       const { error: upsertError } = await supabase
@@ -300,12 +299,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Errore upsert embedding_prodotti' }, { status: 500 })
       }
     }
-
-    const uniqueProdottiMap = new Map<string, ProdottoRow>()
-    for (const row of rowsProdottiToUpsert) {
-      uniqueProdottiMap.set(row.sku, row)
-    }
-    const deduplicatedProdotti = Array.from(uniqueProdottiMap.values())
 
     if (deduplicatedProdotti.length > 0) {
       const { error: prodottiError } = await supabase
