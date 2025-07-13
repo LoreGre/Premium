@@ -1,11 +1,11 @@
-import type { ProdottoMongo } from './types'
+import type { ProdottoMongo } from '../types'
 import { getMongoClient } from '@/lib/mongo/client'
 import {
   MONGO_DB_NAME,
   MONGO_COLLECTION_PRODOTTI,
   LOG_TYPE_MONGO_ERROR,
-} from './constants'
-import { logError } from './logError'
+} from '../constants'
+import { logError } from '../logError'
 
 type UpsertResult = 'inserted' | 'updated' | 'skipped'
 

@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Papa from 'papaparse'
-import { parseRow } from '@/lib/api/silan/parseRow'
-import { upsertProdottoMongo } from '@/lib/api/silan/mongo/upsert'
-import { RowCSV } from '@/lib/api/silan/types'
+import { updateQtyInMongo } from '@/lib/api/silan/mongo/updateQty'
+import type { QtyUpdateRow, RowCSV } from '@/lib/api/silan/types'
 
 // CONFIG
 const BUCKET = 'csv-files'
-const CSV_PATH = 'silan_master_file_full.csv'
+const CSV_PATH = 'silan_stock_price_full.csv'
 const API_KEY = process.env.PREMIUM_SECRET_TOKEN
 
 export async function POST(req: Request) {
@@ -22,8 +21,8 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
-  .from(BUCKET)
-  .download(CSV_PATH)
+    .from(BUCKET)
+    .download(CSV_PATH)
 
   if (error || !data) {
     return NextResponse.json({ error: 'Failed to load CSV' }, { status: 500 })
@@ -33,40 +32,36 @@ export async function POST(req: Request) {
   const parsed = Papa.parse<RowCSV>(text, {
     header: true,
     skipEmptyLines: true,
+    delimiter: ';',
   })
 
-  const rows = parsed.data.slice(offset, offset + limit)
+  const rawRows = parsed.data.slice(offset, offset + limit)
 
-  const result = {
-    offset,
-    limit,
-    count: rows.length,
-    inserted: [] as string[],
-    updated: [] as string[],
-    skipped: [] as string[],
-    invalid: [] as string[],
-  }
+  const validRows: QtyUpdateRow[] = []
+  const invalid: string[] = []
 
-  for (const row of rows) {
-    const parsedRow = await parseRow(row)
-    if (!parsedRow) {
-      result.invalid.push(row.sku || 'N/A')
+  for (const row of rawRows) {
+    const sku = (row.sku || '').toString().trim()
+    const qty = parseInt(row.qty || '')
+
+    if (!sku || isNaN(qty)) {
+      invalid.push(sku || 'N/A')
       continue
     }
 
-    const { prodotto, content_hash } = parsedRow
-    const status = await upsertProdottoMongo({ prodotto, content_hash })
-
-    if (status === 'inserted') result.inserted.push(prodotto.sku)
-    else if (status === 'updated') result.updated.push(prodotto.sku)
-    else result.skipped.push(prodotto.sku)
+    validRows.push({ sku, qty, raw: row })
   }
+
+  await updateQtyInMongo(validRows)
 
   const nextOffset = offset + limit
 
   return NextResponse.json({
     success: true,
-    ...result,
+    offset,
+    limit,
+    count: validRows.length,
+    invalid,
     nextOffset,
   })
 }
