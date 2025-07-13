@@ -50,11 +50,16 @@ export async function parseRow(row: RowCSV): Promise<ParseResult | undefined> {
       ? { qty: tier_qty_1, price: tier_price_1 }
       : undefined
 
-    const category_name = cleanString(row.category_name)
+    let category_name = cleanString(row.category_name)
     if (!category_name) {
-      await logSkippedRow({ reason: 'Missing category_name', raw: row, field: 'category_name' })
-      return undefined
+      category_name = 'Senza categoria'
+      await logSkippedRow({
+        reason: 'Missing category_name (fallback used)',
+        raw: row,
+        field: 'category_name'
+      })
     }
+    
 
     const media_gallery = buildMediaGallery(
       row.media_gallery,
