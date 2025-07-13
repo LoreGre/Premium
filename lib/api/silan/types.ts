@@ -34,7 +34,7 @@ export type RowCSV = {
     name: string
     name_eng?: string
     description: string
-    unit_price: number
+    unit_price?: number
     tier_price_1?: {
       qty: number
       price: number

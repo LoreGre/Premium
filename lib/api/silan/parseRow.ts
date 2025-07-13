@@ -35,7 +35,9 @@ export async function parseRow(row: RowCSV): Promise<ParseResult | undefined> {
     const description = cleanString(row.description, name)
 
     const unit_price = safeParseFloat(row.unit_price)
-    if (!unit_price) {
+    const type = cleanString(row.type, DEFAULT_TYPE) as ProdottoMongo['type']
+
+    if (!unit_price && type !== 'grouped') {
       await logSkippedRow({ reason: 'Invalid unit_price', raw: row, field: 'unit_price' })
       return undefined
     }
