@@ -41,5 +41,8 @@ Endpoint REST per import batch:
 4. Risponde con esito: `inserted`, `updated`, `skipped`, `invalid`
 
 #### Chiamata:
-curl -X POST 'http://premium.local:3000/api/silan?offset=0&limit=500' \
-  -H "x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl"
+curl -X POST 'http://premium.local:3000/api/silan?offset=0&limit=100' \
+  -H 'Content-Type: application/json' \
+  -H 'x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl' \
+  -H 'x_mode: live'
+
