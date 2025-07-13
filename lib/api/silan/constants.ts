@@ -5,7 +5,6 @@ export const FORNITORE = 'silan' as const
 export const MONGO_DB_NAME = 'Premium'
 export const MONGO_COLLECTION_PRODOTTI = 'prodotti' // ✅ collezione unificata
 export const MONGO_COLLECTION_EMBEDDING = 'embedding_prodotti'
-export const MONGO_COLLECTION_LOG = 'embedding_logs'
 
 // 🔍 ElasticSearch
 export const ELASTIC_INDEX_NAME = 'prodotti' // ✅ index unificato, filtrabile per `source` se serve

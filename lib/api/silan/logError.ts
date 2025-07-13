@@ -1,21 +1,20 @@
-import { FORNITORE } from './constants'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-interface LogErrorParams {
+export async function logError(params: {
   type: string
   sku?: string
   message: string
   extra?: Record<string, unknown>
-}
+}) {
+  const supabase = createAdminClient()
 
-export async function logError(params: LogErrorParams) {
-  const log = {
-    fornitore: FORNITORE,
+  await supabase.from('log_error').insert({
+    fornitore: 'Silan',
     type: params.type,
-    sku: params.sku || 'N/A',
+    sku: params.sku || null,
     message: params.message,
-    extra: params.extra,
-    timestamp: new Date().toISOString(),
-  }
+    extra: params.extra || {},
+  })
 
-  console.error(`[ERROR] ${log.type} - ${log.sku} - ${log.message}`)
+  console.error(`[ERROR] ${params.type} - ${params.sku || 'N/A'} - ${params.message}`)
 }
