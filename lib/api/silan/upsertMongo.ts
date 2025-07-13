@@ -28,16 +28,18 @@ export async function upsertProdottoMongo(params: {
 
     const now = new Date()
 
+    // ✅ Escludi created_at dal set
+    const { created_at, ...prodottoSenzaCreatedAt } = prodotto
+
     const result = await col.updateOne(
       { sku: prodotto.sku },
       {
         $set: {
-          ...prodotto,
+          ...prodottoSenzaCreatedAt,
           updated_at: now,
-          content_hash,
         },
         $setOnInsert: {
-          created_at: now,
+          created_at,
         },
       },
       { upsert: true }
@@ -55,7 +57,7 @@ export async function upsertProdottoMongo(params: {
         message: err instanceof Error ? err.message : JSON.stringify(err),
         stack: err instanceof Error ? err.stack : undefined,
       },
-    })    
+    })
     throw err
   }
 }

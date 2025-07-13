@@ -113,6 +113,7 @@ export async function parseRow(row: RowCSV): Promise<ParseResult | undefined> {
     await logSkippedRow({
       reason: 'Unexpected parse error',
       raw: row,
+      error: err instanceof Error ? err.message : JSON.stringify(err),
     })
     return undefined
   }

@@ -2,7 +2,7 @@
 export const FORNITORE = 'silan' as const
 
 // 🧱 MongoDB
-export const MONGO_DB_NAME = 'premium'
+export const MONGO_DB_NAME = 'Premium'
 export const MONGO_COLLECTION_PRODOTTI = 'prodotti' // ✅ collezione unificata
 export const MONGO_COLLECTION_EMBEDDING = 'embedding_prodotti'
 export const MONGO_COLLECTION_LOG = 'embedding_logs'
