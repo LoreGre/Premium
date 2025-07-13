@@ -55,6 +55,7 @@ export async function POST(req: Request) {
   await updateQtyInMongo(validRows)
 
   const nextOffset = offset + limit
+  const next = rawRows.length === limit
 
   return NextResponse.json({
     success: true,
@@ -63,5 +64,7 @@ export async function POST(req: Request) {
     count: validRows.length,
     invalid,
     nextOffset,
+    next,
   })
+
 }

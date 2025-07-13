@@ -103,6 +103,6 @@ Output JSON:
   "nextOffset": 500
 }
 
-curl -X POST 'http://premium.local:3000/api/silan/qty?offset=0&limit=500' \\
+curl -X POST 'http://premium.local:3000/api/silan/qty?offset=0&limit=500' \
   -H 'x_api_key: 4hRD3xGJqx4ktjeHWtyVrapg2i7a35T5PKrMxFoI1IBVwBvPge5eQ3AJchr7r9dl'
 

@@ -63,10 +63,13 @@ export async function POST(req: Request) {
   }
 
   const nextOffset = offset + limit
+  const next = rows.length === limit
 
   return NextResponse.json({
     success: true,
     ...result,
     nextOffset,
+    next,
   })
+
 }
