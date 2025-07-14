@@ -16,7 +16,6 @@ async function logChatMessage(message: ChatMessage, sessionId: string) {
     session_id: sessionId,
     role: message.role,
     content: message.content,
-    products: message.products ?? null,
     intent: message.intent ?? null,
     created_at: message.createdAt
   })
@@ -79,6 +78,12 @@ export function ChatContainer() {
 
     try {
       const res = await sendChatMessage(text, sessionId)
+
+      console.log('Risposta API /api/chat:', res)
+      // Controlla che res.products esista e sia array
+      if (!res.products || res.products.length === 0) {
+        console.warn('Attenzione: nessun prodotto ricevuto dal backend!')
+      }
 
       setMessages((prev) =>
         prev.filter((m) => m.id !== loadingMessage.id)

@@ -74,13 +74,14 @@ export async function findSimilarProductsMongo(
 ): Promise<{ products: ProductItem[]; embedding: number[]; skus: string[] }> {
   const embedding = await getEmbedding(text)
   const client = await getMongoClient()
-  const db = client.db() // usa default database
+  const db = client.db()
 
-  const prodotti = await db.collection('prodotti_silan')
+  // Ricerca vettoriale
+  const vectorResults = (await db.collection('prodotti')
     .aggregate([
       {
         $search: {
-          index: 'embedding_index',
+          index: 'prodotti_vector_index',
           knnBeta: {
             vector: embedding,
             path: 'embedding',
@@ -94,10 +95,10 @@ export async function findSimilarProductsMongo(
           _id: 0,
           sku: 1,
           name: 1,
-          description: 1,
           price: 1,
-          qty: 1,
           available: 1,
+          description: 1,
+          qty: 1,
           supplier: 1,
           category_name: 1,
           thumb_url: 1,
@@ -105,10 +106,55 @@ export async function findSimilarProductsMongo(
         }
       }
     ])
-    .toArray()
+    .toArray()) as ProductItem[]
 
-  const skus = prodotti.map((p) => p.sku)
-  return { products: prodotti as ProductItem[], embedding, skus }
+  // Ricerca full-text
+  const textResults = (await db.collection('prodotti')
+    .aggregate([
+      {
+        $search: {
+          index: 'prodotti_index',
+          text: {
+            query: text,
+            path: ['name', 'description', 'category_name'],
+            fuzzy: {}
+          }
+        }
+      },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          sku: 1,
+          name: 1,
+          price: 1,
+          available: 1,
+          description: 1,
+          qty: 1,
+          supplier: 1,
+          category_name: 1,
+          thumb_url: 1,
+          link: 1
+        }
+      }
+    ])
+    .toArray()) as ProductItem[]
+
+  // Merge risultati senza duplicati (by sku)
+  const combinedMap = new Map<string, ProductItem>()
+  for (const p of vectorResults) {
+    combinedMap.set(p.sku, p)
+  }
+  for (const p of textResults) {
+    if (!combinedMap.has(p.sku)) {
+      combinedMap.set(p.sku, p)
+    }
+  }
+
+  const combined = Array.from(combinedMap.values()).slice(0, limit)
+  const skus = combined.map(p => p.sku)
+
+  return { products: combined, embedding, skus }
 }
 
 // 5. Genera la risposta AI basata sui prodotti trovati
@@ -129,7 +175,7 @@ export async function generateChatResponse(
       { role: 'user', content: prompt }
     ],
     temperature: 0.7,
-    max_tokens: 300
+    max_tokens: 600
   })
 
   const content = completion.choices[0]?.message?.content
