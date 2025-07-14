@@ -1,13 +1,16 @@
 import { createClient } from '@/lib/supabase/client'
 import type { ProductItem } from './types'
 
+type ChatApiResponse = {
+  content: string
+  products?: ProductItem[]
+  intent?: string
+}
+
 export async function sendChatMessage(
   message: string,
   sessionId: string
-): Promise<{
-  content: string
-  products?: ProductItem[]
-}> {
+): Promise<ChatApiResponse> {
   const supabase = createClient()
 
   const {
@@ -29,13 +32,24 @@ export async function sendChatMessage(
   })
 
   if (!res.ok) {
-    throw new Error(`Errore API: ${res.statusText}`)
+    const errorText = await res.text()
+    throw new Error(`Errore API ${res.status}: ${errorText}`)
   }
 
-  const data = await res.json()
+  let data: ChatApiResponse
+  try {
+    data = await res.json()
+  } catch {
+    throw new Error('Risposta JSON non valida dalla API')
+  }
+
+  if (!data.content) {
+    throw new Error('La risposta della chat è vuota')
+  }
 
   return {
     content: data.content,
-    products: data.products || []
+    products: data.products || [],
+    intent: data.intent
   }
 }

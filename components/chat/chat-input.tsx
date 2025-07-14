@@ -19,6 +19,13 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
     setInput('')
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
   return (
     <div className="sticky bottom-0 w-full border-t bg-background px-4 pt-4">
       <div className="max-w-3xl mx-auto relative">
@@ -26,6 +33,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           placeholder="Scrivi qui la tua richiesta..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
           className="min-h-[120px] resize-none pr-12"
           disabled={disabled}
         />
