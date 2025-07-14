@@ -55,8 +55,8 @@ export async function POST(req: Request) {
       continue
     }
   
-    const { prodotto, content_hash } = parsedRow
-    const status = await upsertProdottoMongo({ prodotto, content_hash })
+    const { prodotto } = parsedRow
+    const status = await upsertProdottoMongo({ prodotto })
   
     if (status === 'inserted') result.inserted.push(prodotto.sku)
     else if (status === 'updated') result.updated.push(prodotto.sku)

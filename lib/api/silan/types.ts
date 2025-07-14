@@ -62,6 +62,8 @@ export type ProdottoMongo = {
   weight?: number
   qty: number
   source: 'silan'
+  content_hash?: string
+  embedding?: number[]
   created_at: Date
   updated_at: Date
 }

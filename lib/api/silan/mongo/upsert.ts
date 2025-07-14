@@ -11,9 +11,8 @@ type UpsertResult = 'inserted' | 'updated' | 'skipped'
 
 export async function upsertProdottoMongo(params: {
   prodotto: ProdottoMongo
-  content_hash: string
 }): Promise<UpsertResult> {
-  const { prodotto, content_hash } = params
+  const { prodotto } = params
 
   try {
     const client = await getMongoClient()
@@ -22,13 +21,11 @@ export async function upsertProdottoMongo(params: {
 
     const existing = await col.findOne<{ content_hash?: string }>({ sku: prodotto.sku })
 
-    if (existing && existing.content_hash === content_hash) {
+    if (existing && existing.content_hash === prodotto.content_hash) {
       return 'skipped'
     }
 
     const now = new Date()
-
-    // ✅ Escludi created_at dal set
     const { created_at, ...prodottoSenzaCreatedAt } = prodotto
 
     const result = await col.updateOne(
@@ -51,7 +48,7 @@ export async function upsertProdottoMongo(params: {
   } catch (err) {
     await logError({
       type: LOG_TYPE_MONGO_ERROR,
-      sku: params.prodotto.sku,
+      sku: prodotto.sku,
       message: 'MongoDB upsert failed',
       extra: {
         message: err instanceof Error ? err.message : JSON.stringify(err),

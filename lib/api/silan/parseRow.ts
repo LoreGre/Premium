@@ -11,10 +11,10 @@ import {
 import { FORNITORE, DEFAULT_QTY, DEFAULT_TYPE, DEFAULT_ATTRIBUTE_SET } from './constants'
 import { logSkippedRow } from './logSkipped'
 import crypto from 'crypto'
+import { createEmbeddingFromText } from './openai/createEbeddingFromText'
 
 type ParseResult = {
   prodotto: ProdottoMongo
-  content_hash: string
 }
 
 export async function parseRow(row: RowCSV): Promise<ParseResult | undefined> {
@@ -111,10 +111,12 @@ export async function parseRow(row: RowCSV): Promise<ParseResult | undefined> {
     ]
       .filter(Boolean)
       .join('\n')
-
-    const content_hash = crypto.createHash('sha256').update(content).digest('hex')
-
-    return { prodotto, content_hash }
+    
+    prodotto.content_hash = crypto.createHash('sha256').update(content).digest('hex')
+    prodotto.embedding = await createEmbeddingFromText(content)
+    
+    return { prodotto }
+    
   } catch (err: unknown) {
     console.error('ParseRow Error:', err)
     await logSkippedRow({
