@@ -1,77 +1,81 @@
 import { NextResponse } from 'next/server'
-import {
-  saveMessage,
-  findSimilarProducts,
-  generateChatResponse,
-  saveMessageProducts
-} from '@/components/chat/chat-actions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getEmbedding } from '@/components/chat/chat-embedding'
+import {
+    saveMessage,
+    findSimilarProductsMongo,
+    generateChatResponse,
+    saveMessageProducts
+  } from '@/components/chat/chat-actions'
 
 export async function POST(req: Request) {
   try {
-    const { message, sessionId } = await req.json()
-
-    if (!message || !sessionId) {
-      console.error('[API] Messaggio o sessione mancante')
-      return NextResponse.json({ error: 'Dati mancanti' }, { status: 400 })
-    }
-
     const supabase = createAdminClient()
 
-    // Recupera token Bearer dall'header Authorization
-    const authHeader = req.headers.get('authorization')
-    const accessToken = authHeader?.replace('Bearer ', '')
+    // 1. Autenticazione utente
+    const authHeader = req.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
 
-    if (!accessToken) {
-      console.error('[API] Token non trovato')
-      return NextResponse.json({ error: 'Non autorizzato' }, { status: 401 })
+    if (!token) {
+      return NextResponse.json({ error: 'Token mancante' }, { status: 401 })
     }
 
-    // Recupera utente da token
-    const { data, error } = await supabase.auth.getUser(accessToken)
-    const user = data?.user
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser(token)
 
-    if (error || !user) {
-      console.error('[API] Errore nel recupero utente:', error?.message)
+    if (authError || !user) {
       return NextResponse.json({ error: 'Utente non autenticato' }, { status: 401 })
     }
 
-    const userId = user.id
+    // 2. Parsing payload
+    const { message, sessionId } = await req.json()
 
-    // Cerca prodotti simili
-    const { products, embedding, skus } = await findSimilarProducts(message)
+    if (!message || !sessionId) {
+      return NextResponse.json({ error: 'Messaggio o sessione mancanti' }, { status: 400 })
+    }
 
-    // Salva messaggio utente
-    await saveMessage({
+    // 3. Embedding del messaggio
+    const embedding = await getEmbedding(message)
+
+    // 4. Salva messaggio utente
+    const userMessageId = await saveMessage({
       sessionId,
+      userId: user.id,
       role: 'user',
       content: message,
       embedding,
-      userId
+      intent: null,
     })
+    console.log('Messaggio utente salvato con ID:', userMessageId)
 
-    // Genera risposta AI
-    const response = await generateChatResponse(message, products) ?? ''
+    // 5. Cerca prodotti simili su MongoDB
+    const { products, skus } = await findSimilarProductsMongo(message, 5)
 
-    // Salva messaggio AI
-    const assistantMessageId = await saveMessage({
+    // 6. Genera risposta AI
+    const aiResponse = await generateChatResponse(message, products)
+
+    // 7. Salva messaggio AI
+    const aiMessageId = await saveMessage({
       sessionId,
+      userId: user.id,
       role: 'assistant',
-      content: response,
-      userId
+      content: aiResponse,
+      intent: 'suggestion', // placeholder, da classifier futuro
     })
 
-    // Salva prodotti suggeriti
-    await saveMessageProducts(assistantMessageId, skus)
+    // 8. Salva prodotti associati
+    await saveMessageProducts(aiMessageId, skus)
 
+    // 9. Risposta finale
     return NextResponse.json({
-      content: response,
-      products
+      content: aiResponse,
+      products,
+      intent: 'suggestion'
     })
-
-  } catch (err: unknown) {
-    const error = err as Error
-    console.error('[API] ERRORE:', error.message, error.stack)
+  } catch (err) {
+    console.error('Errore in /api/chat:', err)
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }
