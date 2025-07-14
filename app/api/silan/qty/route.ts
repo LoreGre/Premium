@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Papa from 'papaparse'
 import { updateQtyInMongo } from '@/lib/api/silan/mongo/updateQty'
 import type { QtyUpdateRow, RowCSV } from '@/lib/api/silan/types'
+import { logInfo } from '@/lib/api/silan/log' // ✅ nuovo import
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -53,6 +54,17 @@ export async function POST(req: Request) {
   }
 
   await updateQtyInMongo(validRows)
+
+  // ✅ Log finale del batch qty
+  await logInfo({
+    type: 'batch_qty_update',
+    message: `Batch qty completato - offset: ${offset}, limit: ${limit}`,
+    extra: {
+      valid: validRows.length,
+      invalid: invalid.length,
+      total: rawRows.length,
+    },
+  })
 
   const nextOffset = offset + limit
   const next = rawRows.length === limit

@@ -4,6 +4,7 @@ import Papa from 'papaparse'
 import { parseRow } from '@/lib/api/silan/parseRow'
 import { upsertProdottoMongo } from '@/lib/api/silan/mongo/upsert'
 import { RowCSV } from '@/lib/api/silan/types'
+import { logInfo } from '@/lib/api/silan/log' // ✅ importa logInfo
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -53,14 +54,27 @@ export async function POST(req: Request) {
       result.invalid.push(row.sku || 'N/A')
       continue
     }
-
+  
     const { prodotto, content_hash } = parsedRow
     const status = await upsertProdottoMongo({ prodotto, content_hash })
-
+  
     if (status === 'inserted') result.inserted.push(prodotto.sku)
     else if (status === 'updated') result.updated.push(prodotto.sku)
     else result.skipped.push(prodotto.sku)
   }
+
+  // ✅ Log finale riepilogativo
+  await logInfo({
+    type: 'batch_upsert',
+    message: `Batch completato - offset: ${offset}, limit: ${limit}`,
+    extra: {
+      inserted: result.inserted.length,
+      updated: result.updated.length,
+      skipped: result.skipped.length,
+      invalid: result.invalid.length,
+      total: result.count,
+    },
+  })
 
   const nextOffset = offset + limit
   const next = rows.length === limit

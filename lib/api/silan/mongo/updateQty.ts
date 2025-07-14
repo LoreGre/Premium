@@ -1,6 +1,6 @@
 import { getMongoClient } from '@/lib/mongo/client'
 import { normalizeSku } from '../normalizeSku'
-import { logError } from '../logError'
+import { logError } from '../log'
 import { logSkippedRow } from '../logSkipped'
 import {
   MONGO_DB_NAME,
@@ -27,14 +27,14 @@ export async function updateQtyInMongo(rows: QtyUpdateRow[]): Promise<void> {
       }
 
       const result = await col.updateOne(
-        { normalized_sku: normalized },
+        { sku: normalized }, // ✅ usa 'sku'
         {
           $set: {
             qty: row.qty,
             updated_at: new Date(),
           },
         }
-      )
+      )      
 
       if (result.matchedCount === 0) {
         await logSkippedRow({

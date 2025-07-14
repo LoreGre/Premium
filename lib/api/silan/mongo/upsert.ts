@@ -5,7 +5,7 @@ import {
   MONGO_COLLECTION_PRODOTTI,
   LOG_TYPE_MONGO_ERROR,
 } from '../constants'
-import { logError } from '../logError'
+import { logError } from '../log'
 
 type UpsertResult = 'inserted' | 'updated' | 'skipped'
 
