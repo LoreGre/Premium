@@ -5,8 +5,7 @@ import { getMongoClient } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import { getEmbedding } from './chat-embedding'
 import type { ProductItem } from './types'
-import fs from 'fs'
-import path from 'path'
+
 
 const supabase = createAdminClient()
 const openai = new OpenAI()
