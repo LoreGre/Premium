@@ -4,7 +4,13 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['picsum.photos', 'www.silanpromozioni.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'www.silanpromozioni.com',
+        pathname: '/**'
+      }
+    ]
   },
   env: {
     NEXT_PUBLIC_ENV: process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_ENV || 'Loc',
@@ -14,3 +20,5 @@ const nextConfig: NextConfig = {
 }
 
 export default nextConfig
+
+

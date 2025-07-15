@@ -63,13 +63,18 @@ export async function POST(req: Request) {
     const products: ProductItem[] = hybridResults.map(p => ({
       sku: p.sku,
       name: p.name,
-      description: p.description || '',
-      colore: p.colore || '',
-      price: 0,
-      available: true,
-      supplier: '',
-      thumb_url: ''
+      description: p.description,
+      price: p.price,
+      available: p.available,
+      qty: p.qty,
+      supplier: p.supplier,
+      category_name: p.category_name,
+      thumbnail: p.thumbnail,
+      link: p.link,
+      colore: p.colore,
+      score: p.hybridScore
     }))
+    
     const skus = products.map(p => p.sku)
     console.log('Prodotti trovati:', products)
     console.log('SKU prodotti:', skus)

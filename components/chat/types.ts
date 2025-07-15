@@ -1,15 +1,16 @@
 export type ProductItem = {
   sku: string
   name: string
-  description?: string
+  description: string
   price: number
   available: boolean
   qty?: number
   supplier: string
   category_name?: string
-  thumb_url: string
+  thumbnail: string
   link?: string
-  score?: number;
+  colore?: string
+  score?: number
 }
 
 export type ChatMessage = {

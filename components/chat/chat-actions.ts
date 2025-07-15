@@ -66,9 +66,9 @@ export async function saveMessageProducts(messageId: string, skus: string[]) {
   if (error) throw new Error(`Errore salvataggio prodotti: ${error.message}`)
 }
 
-export async function searchByVectorMongo(queryVector: number[], limit = 5) {
-  const client = await getMongoClient();
-  const db = client.db('Premium');
+export async function searchByVectorMongo(queryVector: number[], limit = 5): Promise<(ProductItem & { score: number })[]> {
+  const client = await getMongoClient()
+  const db = client.db('Premium')
 
   const results = await db.collection('prodotti').aggregate([
     {
@@ -85,19 +85,25 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5) {
         sku: 1,
         name: 1,
         description: 1,
+        price: '$unit_price', // fallback se esiste
+        qty: 1,
+        available: { $gt: ['$qty', 0] },
+        supplier: '$source',
+        category_name: 1,
+        thumbnail: 1,
+        link: 1,
         colore: 1,
         score: { $meta: 'vectorSearchScore' }
-      }
+      }      
     }
-  ]).toArray();
+  ]).toArray()
 
-  console.log('[searchByVectorMongo] risultati:', results.length)
-  return results;
+  return results as (ProductItem & { score: number })[]
 }
 
-export async function searchByTextMongo(query: string, limit = 5) {
-  const client = await getMongoClient();
-  const db = client.db('Premium');
+export async function searchByTextMongo(query: string, limit = 5): Promise<(ProductItem & { score: number })[]> {
+  const client = await getMongoClient()
+  const db = client.db('Premium')
 
   const results = await db.collection('prodotti').aggregate([
     {
@@ -116,35 +122,32 @@ export async function searchByTextMongo(query: string, limit = 5) {
         sku: 1,
         name: 1,
         description: 1,
+        price: '$unit_price', // fallback se esiste
+        qty: 1,
+        available: { $gt: ['$qty', 0] },
+        supplier: '$source',
+        category_name: 1,
+        thumbnail: 1,
+        link: 1,
         colore: 1,
         score: { $meta: 'searchScore' }
-      }
+      }      
     }
-  ]).toArray();
+  ]).toArray()
 
-  console.log('[searchByTextMongo] risultati:', results.length)
-  return results;
+  return results as (ProductItem & { score: number })[]
+
 }
 
-type ProductHybridResult = {
-  sku: string;
-  name: string;
-  description?: string;
-  colore?: string;
-  vectorScore?: number;
-  textScore?: number;
-  hybridScore: number;
+type ProductHybridResult = ProductItem & {
+  vectorScore?: number
+  textScore?: number
+  hybridScore: number
 }
+
 
 export async function searchHybridFallback(query: string, limit = 5): Promise<ProductHybridResult[]> {
   const embedding = await getEmbedding(query)
-
-  // Scrive su file per copia-incolla da terminale
-  const outPath = path.resolve(process.cwd(), 'embedding.txt')
-  fs.writeFileSync(outPath, JSON.stringify(embedding))
-
-  console.log('[searchHybridFallback] embedding preview (prime 5):', embedding.slice(0, 5))
-  console.log(`[searchHybridFallback] embedding completo salvato in: ${outPath}`)
 
   const [vectorResults, textResults] = await Promise.all([
     searchByVectorMongo(embedding, limit * 2),
@@ -157,11 +160,18 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
     merged[v.sku] = {
       sku: v.sku,
       name: v.name,
-      description: v.description,
-      colore: v.colore,
+      description: v.description ?? '',
+      price: v.price ?? 0,
+      available: v.available ?? false,
+      qty: v.qty,
+      supplier: v.supplier ?? '',
+      category_name: v.category_name ?? '',
+      thumbnail: v.thumbnail ?? '',
+      link: v.link ?? '',
+      colore: v.colore ?? '',
       vectorScore: v.score,
       hybridScore: v.score * 3
-    }
+    }  
   }
 
   for (const t of textResults) {
@@ -172,11 +182,18 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
       merged[t.sku] = {
         sku: t.sku,
         name: t.name,
-        description: t.description,
-        colore: t.colore,
-        textScore: t.score,
-        hybridScore: t.score
-      }
+        description: t.description ?? '',
+        price: t.price ?? 0,
+        available: t.available ?? false,
+        qty: t.qty,
+        supplier: t.supplier ?? '',
+        category_name: t.category_name ?? '',
+        thumbnail: t.thumbnail ?? '',
+        link: t.link ?? '',
+        colore: t.colore ?? '',
+        vectorScore: t.score,
+        hybridScore: t.score * 3
+      }  
     }
   }
 
@@ -187,6 +204,10 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
   console.log('[searchHybridFallback] risultati finali:', final.length)
   return final
 }
+
+
+
+
 
 export async function generateChatResponse(
   message: string,
@@ -215,30 +236,4 @@ export async function generateChatResponse(
   }
 
   return content
-}
-
-
-export async function debugHybridSearch(query: string, limit = 5) {
-  const embedding = await getEmbedding(query)
-  const outPath = path.resolve(process.cwd(), 'embedding.txt')
-  fs.writeFileSync(outPath, JSON.stringify(embedding))
-  console.log('[debugHybridSearch] embedding salvato in:', outPath)
-  console.log('[debugHybridSearch] preview:', embedding.slice(0, 5))
-
-  const [vectorResults, textResults] = await Promise.all([
-    searchByVectorMongo(embedding, limit * 2),
-    searchByTextMongo(query, limit * 2)
-  ])
-
-  console.log('\n[Vector Results]', vectorResults.length)
-  for (const p of vectorResults) {
-    console.log(`- ${p.sku} | ${p.name} | score: ${p.score}`)
-  }
-
-  console.log('\n[Text Results]', textResults.length)
-  for (const p of textResults) {
-    console.log(`- ${p.sku} | ${p.name} | score: ${p.score}`)
-  }
-
-  return { vectorResults, textResults, embedding }
 }
