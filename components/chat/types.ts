@@ -9,6 +9,7 @@ export type ProductItem = {
   category_name?: string
   thumb_url: string
   link?: string
+  score?: number;
 }
 
 export type ChatMessage = {

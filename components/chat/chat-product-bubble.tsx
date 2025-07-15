@@ -20,7 +20,7 @@ export function ProductBubble({ products }: { products: ProductItem[] }) {
               <div className="flex-1 pr-20">
                 <div className="flex gap-4">
                   <Image
-                    src={product.thumb_url}
+                    src={product.thumb_url || '/placeholder.png'}
                     alt={product.name}
                     width={64}
                     height={64}

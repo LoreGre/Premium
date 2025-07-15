@@ -5,11 +5,12 @@ import { getMongoClient } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import { getEmbedding } from './chat-embedding'
 import type { ProductItem } from './types'
+import fs from 'fs'
+import path from 'path'
 
 const supabase = createAdminClient()
 const openai = new OpenAI()
 
-// 1. Crea una nuova sessione
 export async function createChatSession(userId?: string) {
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -21,7 +22,6 @@ export async function createChatSession(userId?: string) {
   return data.id as string
 }
 
-// 2. Salva un messaggio (user o assistant)
 export async function saveMessage({
   sessionId,
   role,
@@ -57,7 +57,6 @@ export async function saveMessage({
   return data.id as string
 }
 
-// 3. Salva prodotti suggeriti associati a un messaggio
 export async function saveMessageProducts(messageId: string, skus: string[]) {
   if (skus.length === 0) return
 
@@ -67,97 +66,128 @@ export async function saveMessageProducts(messageId: string, skus: string[]) {
   if (error) throw new Error(`Errore salvataggio prodotti: ${error.message}`)
 }
 
-// 4. Trova prodotti semanticamente simili da MongoDB Atlas
-export async function findSimilarProductsMongo(
-  text: string,
-  limit = 5
-): Promise<{ products: ProductItem[]; embedding: number[]; skus: string[] }> {
-  const embedding = await getEmbedding(text)
-  const client = await getMongoClient()
-  const db = client.db()
+export async function searchByVectorMongo(queryVector: number[], limit = 5) {
+  const client = await getMongoClient();
+  const db = client.db('Premium');
 
-  // Ricerca vettoriale
-  const vectorResults = (await db.collection('prodotti')
-    .aggregate([
-      {
-        $search: {
-          index: 'prodotti_vector_index',
-          knnBeta: {
-            vector: embedding,
-            path: 'embedding',
-            k: limit
-          }
-        }
-      },
-      { $limit: limit },
-      {
-        $project: {
-          _id: 0,
-          sku: 1,
-          name: 1,
-          price: 1,
-          available: 1,
-          description: 1,
-          qty: 1,
-          supplier: 1,
-          category_name: 1,
-          thumb_url: 1,
-          link: 1
+  const results = await db.collection('prodotti').aggregate([
+    {
+      $vectorSearch: {
+        index: 'prodotti_vector_index',
+        path: 'embedding',
+        queryVector,
+        numCandidates: 100,
+        limit
+      }
+    },
+    {
+      $project: {
+        sku: 1,
+        name: 1,
+        description: 1,
+        colore: 1,
+        score: { $meta: 'vectorSearchScore' }
+      }
+    }
+  ]).toArray();
+
+  console.log('[searchByVectorMongo] risultati:', results.length)
+  return results;
+}
+
+export async function searchByTextMongo(query: string, limit = 5) {
+  const client = await getMongoClient();
+  const db = client.db('Premium');
+
+  const results = await db.collection('prodotti').aggregate([
+    {
+      $search: {
+        index: 'prodotti_index',
+        text: {
+          query,
+          path: ['name', 'description', 'category_name', 'colore'],
+          fuzzy: { maxEdits: 2 }
         }
       }
-    ])
-    .toArray()) as ProductItem[]
-
-  // Ricerca full-text
-  const textResults = (await db.collection('prodotti')
-    .aggregate([
-      {
-        $search: {
-          index: 'prodotti_index',
-          text: {
-            query: text,
-            path: ['name', 'description', 'category_name'],
-            fuzzy: {}
-          }
-        }
-      },
-      { $limit: limit },
-      {
-        $project: {
-          _id: 0,
-          sku: 1,
-          name: 1,
-          price: 1,
-          available: 1,
-          description: 1,
-          qty: 1,
-          supplier: 1,
-          category_name: 1,
-          thumb_url: 1,
-          link: 1
-        }
+    },
+    { $limit: limit },
+    {
+      $project: {
+        sku: 1,
+        name: 1,
+        description: 1,
+        colore: 1,
+        score: { $meta: 'searchScore' }
       }
-    ])
-    .toArray()) as ProductItem[]
+    }
+  ]).toArray();
 
-  // Merge risultati senza duplicati (by sku)
-  const combinedMap = new Map<string, ProductItem>()
-  for (const p of vectorResults) {
-    combinedMap.set(p.sku, p)
-  }
-  for (const p of textResults) {
-    if (!combinedMap.has(p.sku)) {
-      combinedMap.set(p.sku, p)
+  console.log('[searchByTextMongo] risultati:', results.length)
+  return results;
+}
+
+type ProductHybridResult = {
+  sku: string;
+  name: string;
+  description?: string;
+  colore?: string;
+  vectorScore?: number;
+  textScore?: number;
+  hybridScore: number;
+}
+
+export async function searchHybridFallback(query: string, limit = 5): Promise<ProductHybridResult[]> {
+  const embedding = await getEmbedding(query)
+
+  // Scrive su file per copia-incolla da terminale
+  const outPath = path.resolve(process.cwd(), 'embedding.txt')
+  fs.writeFileSync(outPath, JSON.stringify(embedding))
+
+  console.log('[searchHybridFallback] embedding preview (prime 5):', embedding.slice(0, 5))
+  console.log(`[searchHybridFallback] embedding completo salvato in: ${outPath}`)
+
+  const [vectorResults, textResults] = await Promise.all([
+    searchByVectorMongo(embedding, limit * 2),
+    searchByTextMongo(query, limit * 2)
+  ])
+
+  const merged: Record<string, ProductHybridResult> = {}
+
+  for (const v of vectorResults) {
+    merged[v.sku] = {
+      sku: v.sku,
+      name: v.name,
+      description: v.description,
+      colore: v.colore,
+      vectorScore: v.score,
+      hybridScore: v.score * 3
     }
   }
 
-  const combined = Array.from(combinedMap.values()).slice(0, limit)
-  const skus = combined.map(p => p.sku)
+  for (const t of textResults) {
+    if (merged[t.sku]) {
+      merged[t.sku].textScore = t.score
+      merged[t.sku].hybridScore += t.score
+    } else {
+      merged[t.sku] = {
+        sku: t.sku,
+        name: t.name,
+        description: t.description,
+        colore: t.colore,
+        textScore: t.score,
+        hybridScore: t.score
+      }
+    }
+  }
 
-  return { products: combined, embedding, skus }
+  const final = Object.values(merged)
+    .sort((a, b) => b.hybridScore - a.hybridScore)
+    .slice(0, limit)
+
+  console.log('[searchHybridFallback] risultati finali:', final.length)
+  return final
 }
 
-// 5. Genera la risposta AI basata sui prodotti trovati
 export async function generateChatResponse(
   message: string,
   products: ProductItem[]
@@ -185,4 +215,30 @@ export async function generateChatResponse(
   }
 
   return content
+}
+
+
+export async function debugHybridSearch(query: string, limit = 5) {
+  const embedding = await getEmbedding(query)
+  const outPath = path.resolve(process.cwd(), 'embedding.txt')
+  fs.writeFileSync(outPath, JSON.stringify(embedding))
+  console.log('[debugHybridSearch] embedding salvato in:', outPath)
+  console.log('[debugHybridSearch] preview:', embedding.slice(0, 5))
+
+  const [vectorResults, textResults] = await Promise.all([
+    searchByVectorMongo(embedding, limit * 2),
+    searchByTextMongo(query, limit * 2)
+  ])
+
+  console.log('\n[Vector Results]', vectorResults.length)
+  for (const p of vectorResults) {
+    console.log(`- ${p.sku} | ${p.name} | score: ${p.score}`)
+  }
+
+  console.log('\n[Text Results]', textResults.length)
+  for (const p of textResults) {
+    console.log(`- ${p.sku} | ${p.name} | score: ${p.score}`)
+  }
+
+  return { vectorResults, textResults, embedding }
 }

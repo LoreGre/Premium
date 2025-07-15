@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding } from '@/components/chat/chat-embedding'
 import {
-    saveMessage,
-    findSimilarProductsMongo,
-    generateChatResponse,
-    saveMessageProducts
-  } from '@/components/chat/chat-actions'
+  saveMessage,
+  generateChatResponse,
+  saveMessageProducts
+} from '@/components/chat/chat-actions'
+import { searchHybridFallback } from '@/components/chat/chat-actions'
+
+import type { ProductItem } from '@/components/chat/types'
 
 export async function POST(req: Request) {
   try {
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
 
     // 3. Embedding del messaggio
     const embedding = await getEmbedding(message)
-    console.log('Embedding generato:', embedding)
+    console.log('Embedding generato (preview):', embedding.slice(0, 5))
 
     // 4. Salva messaggio utente
     const userMessageId = await saveMessage({
@@ -56,8 +58,19 @@ export async function POST(req: Request) {
     })
     console.log('Messaggio utente salvato con ID:', userMessageId)
 
-    // 5. Cerca prodotti simili su MongoDB
-    const { products, skus } = await findSimilarProductsMongo(message, 5)
+    // 5. Ricerca prodotti ibrida
+    const hybridResults = await searchHybridFallback(message, 5)
+    const products: ProductItem[] = hybridResults.map(p => ({
+      sku: p.sku,
+      name: p.name,
+      description: p.description || '',
+      colore: p.colore || '',
+      price: 0,
+      available: true,
+      supplier: '',
+      thumb_url: ''
+    }))
+    const skus = products.map(p => p.sku)
     console.log('Prodotti trovati:', products)
     console.log('SKU prodotti:', skus)
 
@@ -71,7 +84,7 @@ export async function POST(req: Request) {
       userId: user.id,
       role: 'assistant',
       content: aiResponse,
-      intent: 'suggestion', // placeholder, da classifier futuro
+      intent: 'suggestion'
     })
     console.log('Messaggio AI salvato con ID:', aiMessageId)
 

@@ -2,61 +2,41 @@
 curl -X POST 'http://premium.local:3000/api/chat/debug' \
   -H 'Content-Type: application/json' \
   -d '{
-    "embedding": xxx,
+    "message": "cappelli blu",
     "limit": 5
   }'
+
+  curl -X POST 'http://premium.local:3000/api/chat/debug' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "embedding": [0.01, 0.02, 0.03, ...],
+    "limit": 5
+  }'
+
 */
-
-
 import { NextResponse } from 'next/server'
 import { getMongoClient } from '@/lib/mongo/client'
 
 export async function POST(req: Request) {
   try {
-    const { embedding, limit = 5 } = await req.json()
-
-    if (!embedding || !Array.isArray(embedding)) {
-      return NextResponse.json({ error: 'Embedding mancante o non valido' }, { status: 400 })
-    }
-
     const client = await getMongoClient()
-    const db = client.db()
+    const db = client.db('Premium')
 
-    const prodotti = await db.collection('prodotti_silan')
-      .aggregate([
-        {
-          $search: {
-            index: 'embedding_index',
-            knnBeta: {
-              vector: embedding,
-              path: 'embedding',
-              k: limit
-            }
-          }
-        },
-        { $limit: limit },
-        {
-          $project: {
-            _id: 0,
-            sku: 1,
-            name: 1,
-            description: 1,
-            price: 1,
-            qty: 1,
-            available: 1,
-            supplier: 1,
-            category_name: 1,
-            thumb_url: 1,
-            link: 1
-          }
-        }
-      ])
+    // Query test su "cappelli"
+    const test = await db.collection('prodotti')
+      .find({ name: /cappelli/i })
+      .limit(5)
       .toArray()
 
-    return NextResponse.json({ products: prodotti })
+    console.log('[DEBUG find cappelli]', test)
 
+    return NextResponse.json({
+      success: true,
+      count: test.length,
+      items: test
+    })
   } catch (err) {
-    console.error('Errore debug Mongo embedding:', err)
+    console.error('[POST /api/chat/debug] Errore:', err)
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }
