@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { createChatSession } from './chat-actions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
-import { ProductBubble } from './chat-product-bubble'
 import { sendChatMessage } from './chat-api'
 import type { ChatMessage } from './types'
 
@@ -126,13 +125,9 @@ export function ChatContainer() {
       {/* Area scrollabile */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto w-full px-6 pt-6 pb-40">
-          {messages.map((msg) =>
-            msg.products?.length ? (
-              <ProductBubble key={msg.id} products={msg.products} />
-            ) : (
-              <ChatMessageItem key={msg.id} message={msg} />
-            )
-          )}
+        {messages.map((msg) => (
+          <ChatMessageItem key={msg.id} message={msg} />
+        ))}
           <div ref={scrollRef} className="h-1" />
         </div>
       </div>

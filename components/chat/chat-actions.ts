@@ -217,13 +217,29 @@ export async function generateChatResponse(
     .map((p) => `- ${p.name} (€${p.price})`)
     .join('\n')
 
-  const prompt = `L'utente ha chiesto: "${message}". Suggerisci in modo naturale e professionale dei prodotti promozionali tra questi:\n\n${productList}`
+  const prompt = `
+Rispondi all'utente in modo amichevole e professionale, come se fossi un esperto di gadget aziendali pronto ad aiutare con dei consigli. 
+Hai ricevuto questa richiesta:
+
+"${message}"
+
+Tra i prodotti che puoi proporre ci sono:
+${productList}
+
+Suggerisci alcuni tra questi articoli, motivando brevemente perché potrebbero essere adatti alla richiesta dell’utente. Non limitarti a elencarli: fai una raccomandazione utile, naturale e personalizzata. Evita di sembrare un robot.
+`.trim()
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: 'Sei un esperto di gadget aziendali.' },
-      { role: 'user', content: prompt }
+      {
+        role: 'system',
+        content: `Sei un assistente esperto di prodotti promozionali aziendali. Parla in modo chiaro, utile e naturale. Il tuo obiettivo è consigliare all'utente i gadget più adatti alle sue esigenze.`
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
     ],
     temperature: 0.7,
     max_tokens: 600
