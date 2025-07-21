@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Papa from 'papaparse'
 import { updateQtyInMongo } from '@/lib/api/silan/mongo/updateQty'
 import type { QtyUpdateRow, RowCSV } from '@/lib/api/silan/types'
-import { logInfo } from '@/lib/api/silan/log' // ✅ nuovo import
+import { getLogger } from '@/lib/logger'
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -11,12 +11,14 @@ const CSV_PATH = 'silan_stock_price_full.csv'
 const API_KEY = process.env.PREMIUM_SECRET_TOKEN
 
 export async function POST(req: Request) {
+  const logger = await getLogger()
   const { searchParams } = new URL(req.url)
   const offset = parseInt(searchParams.get('offset') || '0', 10)
   const limit = parseInt(searchParams.get('limit') || '500', 10)
 
   const key = req.headers.get('x_api_key')
   if (key !== API_KEY) {
+    logger.warn('Unauthorized API key')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -26,6 +28,7 @@ export async function POST(req: Request) {
     .download(CSV_PATH)
 
   if (error || !data) {
+    logger.error('Failed to load CSV', { error })
     return NextResponse.json({ error: 'Failed to load CSV' }, { status: 500 })
   }
 
@@ -55,15 +58,12 @@ export async function POST(req: Request) {
 
   await updateQtyInMongo(validRows)
 
-  // ✅ Log finale del batch qty
-  await logInfo({
+  logger.info({
     type: 'batch_qty_update',
     message: `Batch qty completato - offset: ${offset}, limit: ${limit}`,
-    extra: {
-      valid: validRows.length,
-      invalid: invalid.length,
-      total: rawRows.length,
-    },
+    valid: validRows.length,
+    invalid: invalid.length,
+    total: rawRows.length,
   })
 
   const nextOffset = offset + limit
@@ -78,5 +78,4 @@ export async function POST(req: Request) {
     nextOffset,
     next,
   })
-
 }

@@ -7,10 +7,11 @@ import {
   saveMessageProducts
 } from '@/components/chat/chat-actions'
 import { searchHybridFallback } from '@/components/chat/chat-actions'
-
 import type { ProductItem } from '@/components/chat/types'
+import { getLogger } from '@/lib/logger'
 
 export async function POST(req: Request) {
+  const logger = await getLogger()
   try {
     const supabase = createAdminClient()
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     const token = authHeader?.replace('Bearer ', '')
 
     if (!token) {
-      console.log('Token mancante')
+      logger.warn('Token mancante')
       return NextResponse.json({ error: 'Token mancante' }, { status: 401 })
     }
 
@@ -29,23 +30,23 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser(token)
 
     if (authError || !user) {
-      console.log('Utente non autenticato o errore auth:', authError)
+      logger.warn('Utente non autenticato o errore auth', { authError })
       return NextResponse.json({ error: 'Utente non autenticato' }, { status: 401 })
     }
-    console.log('Utente autenticato:', user.id)
+    logger.info('Utente autenticato', { userId: user.id })
 
     // 2. Parsing payload
     const { message, sessionId } = await req.json()
-    console.log('Payload ricevuto:', { message, sessionId })
+    logger.info('Payload ricevuto', { message, sessionId })
 
     if (!message || !sessionId) {
-      console.log('Messaggio o sessione mancanti nel payload')
+      logger.warn('Messaggio o sessione mancanti nel payload')
       return NextResponse.json({ error: 'Messaggio o sessione mancanti' }, { status: 400 })
     }
 
     // 3. Embedding del messaggio
     const embedding = await getEmbedding(message)
-    console.log('Embedding generato (preview):', embedding.slice(0, 5))
+    logger.info('Embedding generato', { preview: embedding.slice(0, 5) })
 
     // 4. Salva messaggio utente
     const userMessageId = await saveMessage({
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       embedding,
       intent: null,
     })
-    console.log('Messaggio utente salvato con ID:', userMessageId)
+    logger.info('Messaggio utente salvato', { userMessageId })
 
     // 5. Ricerca prodotti ibrida
     const hybridResults = await searchHybridFallback(message, 5)
@@ -74,14 +75,13 @@ export async function POST(req: Request) {
       colore: p.colore,
       score: p.hybridScore
     }))
-    
+
     const skus = products.map(p => p.sku)
-    console.log('Prodotti trovati:', products)
-    console.log('SKU prodotti:', skus)
+    logger.info('Prodotti trovati', { skus, productsCount: products.length })
 
     // 6. Genera risposta AI
     const aiResponse = await generateChatResponse(message, products)
-    console.log('Risposta AI generata:', aiResponse)
+    logger.info('Risposta AI generata', { aiResponse })
 
     // 7. Salva messaggio AI
     const aiMessageId = await saveMessage({
@@ -91,11 +91,11 @@ export async function POST(req: Request) {
       content: aiResponse,
       intent: 'suggestion'
     })
-    console.log('Messaggio AI salvato con ID:', aiMessageId)
+    logger.info('Messaggio AI salvato', { aiMessageId })
 
     // 8. Salva prodotti associati
     await saveMessageProducts(aiMessageId, skus)
-    console.log('Prodotti associati salvati al messaggio AI')
+    logger.info('Prodotti associati salvati al messaggio AI', { aiMessageId, skus })
 
     // 9. Risposta finale
     return NextResponse.json({
@@ -104,7 +104,8 @@ export async function POST(req: Request) {
       intent: 'suggestion'
     })
   } catch (err) {
-    console.error('Errore in /api/chat:', err)
+    const logger = await getLogger()
+    logger.error('Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }

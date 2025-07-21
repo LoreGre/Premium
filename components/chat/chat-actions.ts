@@ -5,19 +5,24 @@ import { getMongoClient } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import { getEmbedding } from './chat-embedding'
 import type { ProductItem } from './types'
-
+import { getLogger } from '@/lib/logger'
 
 const supabase = createAdminClient()
 const openai = new OpenAI()
 
 export async function createChatSession(userId?: string) {
+  const logger = await getLogger()
   const { data, error } = await supabase
     .from('chat_sessions')
     .insert([{ user_id: userId ?? null }])
     .select('id')
     .single()
 
-  if (error) throw new Error(`Errore creazione sessione: ${error.message}`)
+  if (error) {
+    logger.error('Errore creazione sessione', { error })
+    throw new Error(`Errore creazione sessione: ${error.message}`)
+  }
+  logger.info('Sessione creata', { userId, sessionId: data.id })
   return data.id as string
 }
 
@@ -36,6 +41,7 @@ export async function saveMessage({
   userId?: string
   intent?: string | null
 }) {
+  const logger = await getLogger()
   const { data, error } = await supabase
     .from('chat_messages')
     .insert([
@@ -52,17 +58,26 @@ export async function saveMessage({
     .select('id')
     .single()
 
-  if (error) throw new Error(`Errore salvataggio messaggio: ${error.message}`)
+  if (error) {
+    logger.error('Errore salvataggio messaggio', { error })
+    throw new Error(`Errore salvataggio messaggio: ${error.message}`)
+  }
+  logger.info('Messaggio salvato', { sessionId, role, messageId: data.id })
   return data.id as string
 }
 
 export async function saveMessageProducts(messageId: string, skus: string[]) {
+  const logger = await getLogger()
   if (skus.length === 0) return
 
   const rows = skus.map((sku) => ({ message_id: messageId, sku }))
   const { error } = await supabase.from('chat_products').insert(rows)
 
-  if (error) throw new Error(`Errore salvataggio prodotti: ${error.message}`)
+  if (error) {
+    logger.error('Errore salvataggio prodotti', { error })
+    throw new Error(`Errore salvataggio prodotti: ${error.message}`)
+  }
+  logger.info('Prodotti associati salvati', { messageId, skus })
 }
 
 export async function searchByVectorMongo(queryVector: number[], limit = 5): Promise<(ProductItem & { score: number })[]> {
@@ -84,7 +99,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         sku: 1,
         name: 1,
         description: 1,
-        price: '$unit_price', // fallback se esiste
+        price: '$unit_price',
         qty: 1,
         available: { $gt: ['$qty', 0] },
         supplier: '$source',
@@ -93,7 +108,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         link: 1,
         colore: 1,
         score: { $meta: 'vectorSearchScore' }
-      }      
+      }
     }
   ]).toArray()
 
@@ -121,7 +136,7 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         sku: 1,
         name: 1,
         description: 1,
-        price: '$unit_price', // fallback se esiste
+        price: '$unit_price',
         qty: 1,
         available: { $gt: ['$qty', 0] },
         supplier: '$source',
@@ -130,12 +145,11 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         link: 1,
         colore: 1,
         score: { $meta: 'searchScore' }
-      }      
+      }
     }
   ]).toArray()
 
   return results as (ProductItem & { score: number })[]
-
 }
 
 type ProductHybridResult = ProductItem & {
@@ -144,8 +158,8 @@ type ProductHybridResult = ProductItem & {
   hybridScore: number
 }
 
-
 export async function searchHybridFallback(query: string, limit = 5): Promise<ProductHybridResult[]> {
+  const logger = await getLogger()
   const embedding = await getEmbedding(query)
 
   const [vectorResults, textResults] = await Promise.all([
@@ -170,7 +184,7 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
       colore: v.colore ?? '',
       vectorScore: v.score,
       hybridScore: v.score * 3
-    }  
+    }
   }
 
   for (const t of textResults) {
@@ -192,7 +206,7 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
         colore: t.colore ?? '',
         vectorScore: t.score,
         hybridScore: t.score * 3
-      }  
+      }
     }
   }
 
@@ -200,18 +214,15 @@ export async function searchHybridFallback(query: string, limit = 5): Promise<Pr
     .sort((a, b) => b.hybridScore - a.hybridScore)
     .slice(0, limit)
 
-  console.log('[searchHybridFallback] risultati finali:', final.length)
+  logger.info('[searchHybridFallback] risultati finali', { count: final.length, skus: final.map(x => x.sku) })
   return final
 }
-
-
-
-
 
 export async function generateChatResponse(
   message: string,
   products: ProductItem[]
 ): Promise<string> {
+  const logger = await getLogger()
   const productList = products
     .map((p) => `- ${p.name} (€${p.price})`)
     .join('\n')
@@ -247,8 +258,10 @@ Suggerisci alcuni tra questi articoli, motivando brevemente perché potrebbero e
   const content = completion.choices[0]?.message?.content
 
   if (!content) {
+    logger.error('Risposta AI vuota o malformata')
     throw new Error('Risposta AI vuota o malformata')
   }
 
+  logger.info('Risposta AI generata')
   return content
 }

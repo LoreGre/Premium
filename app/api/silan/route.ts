@@ -4,7 +4,7 @@ import Papa from 'papaparse'
 import { parseRow } from '@/lib/api/silan/parseRow'
 import { upsertProdottoMongo } from '@/lib/api/silan/mongo/upsert'
 import { RowCSV } from '@/lib/api/silan/types'
-import { logInfo } from '@/lib/api/silan/log' // ✅ importa logInfo
+import { getLogger } from '@/lib/logger'
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -12,21 +12,24 @@ const CSV_PATH = 'silan_master_file_full.csv'
 const API_KEY = process.env.PREMIUM_SECRET_TOKEN
 
 export async function POST(req: Request) {
+  const logger = await getLogger()
   const { searchParams } = new URL(req.url)
   const offset = parseInt(searchParams.get('offset') || '0', 10)
   const limit = parseInt(searchParams.get('limit') || '500', 10)
 
   const key = req.headers.get('x_api_key')
   if (key !== API_KEY) {
+    logger.warn('Unauthorized API key')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
-  .from(BUCKET)
-  .download(CSV_PATH)
+    .from(BUCKET)
+    .download(CSV_PATH)
 
   if (error || !data) {
+    logger.error('Failed to load CSV', { error })
     return NextResponse.json({ error: 'Failed to load CSV' }, { status: 500 })
   }
 
@@ -54,26 +57,23 @@ export async function POST(req: Request) {
       result.invalid.push(row.sku || 'N/A')
       continue
     }
-  
+
     const { prodotto } = parsedRow
     const status = await upsertProdottoMongo({ prodotto })
-  
+
     if (status === 'inserted') result.inserted.push(prodotto.sku)
     else if (status === 'updated') result.updated.push(prodotto.sku)
     else result.skipped.push(prodotto.sku)
   }
 
-  // ✅ Log finale riepilogativo
-  await logInfo({
+  logger.info({
     type: 'batch_upsert',
     message: `Batch completato - offset: ${offset}, limit: ${limit}`,
-    extra: {
-      inserted: result.inserted.length,
-      updated: result.updated.length,
-      skipped: result.skipped.length,
-      invalid: result.invalid.length,
-      total: result.count,
-    },
+    inserted: result.inserted.length,
+    updated: result.updated.length,
+    skipped: result.skipped.length,
+    invalid: result.invalid.length,
+    total: result.count,
   })
 
   const nextOffset = offset + limit
@@ -85,5 +85,4 @@ export async function POST(req: Request) {
     nextOffset,
     next,
   })
-
 }
