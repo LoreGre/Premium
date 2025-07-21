@@ -2,21 +2,17 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding } from '@/components/chat/chat-embedding'
 import {
-  saveMessage,
+  saveMessageMongo,
   generateChatResponse,
-  saveMessageProducts
+  getSessionHistoryMongo,
+  searchHybridMongo
 } from '@/components/chat/chat-actions'
-import { searchHybridFallback } from '@/components/chat/chat-actions'
-import type { ProductItem } from '@/components/chat/types'
+import type { ProductItem, ChatAIResponse } from '@/components/chat/types'
 import { logger } from '@/lib/logger'
 
-
 export async function POST(req: Request) {
-
   try {
     const supabase = createAdminClient()
-
-    // 1. Autenticazione utente
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')
 
@@ -36,7 +32,6 @@ export async function POST(req: Request) {
     }
     logger.info('Utente autenticato', { userId: user.id })
 
-    // 2. Parsing payload
     const { message, sessionId } = await req.json()
     logger.info('Payload ricevuto', { message, sessionId })
 
@@ -45,23 +40,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Messaggio o sessione mancanti' }, { status: 400 })
     }
 
-    // 3. Embedding del messaggio
     const embedding = await getEmbedding(message)
     logger.info('Embedding generato', { preview: embedding.slice(0, 5) })
 
-    // 4. Salva messaggio utente
-    const userMessageId = await saveMessage({
-      sessionId,
-      userId: user.id,
+    const userMessageId = await saveMessageMongo({
+      session_id: sessionId,
+      user_id: user.id,
       role: 'user',
       content: message,
       embedding,
-      intent: null,
+      createdAt: new Date().toISOString(),
     })
     logger.info('Messaggio utente salvato', { userMessageId })
 
-    // 5. Ricerca prodotti ibrida
-    const hybridResults = await searchHybridFallback(message, 5)
+    const history = await getSessionHistoryMongo(sessionId, 5)
+
+    const hybridResults = await searchHybridMongo(message, embedding, 10)
     const products: ProductItem[] = hybridResults.map(p => ({
       sku: p.sku,
       name: p.name,
@@ -76,33 +70,32 @@ export async function POST(req: Request) {
       colore: p.colore,
       score: p.hybridScore
     }))
+    logger.info('Prodotti trovati', { productsCount: products.length, skus: products.map(p => p.sku) })
 
-    const skus = products.map(p => p.sku)
-    logger.info('Prodotti trovati', { skus, productsCount: products.length })
-
-    // 6. Genera risposta AI
-    const aiResponse = await generateChatResponse(message, products)
+    const aiResponse: ChatAIResponse = await generateChatResponse({
+      message,
+      products,
+      history
+    })
     logger.info('Risposta AI generata', { aiResponse })
 
-    // 7. Salva messaggio AI
-    const aiMessageId = await saveMessage({
-      sessionId,
-      userId: user.id,
+    const aiMessageId = await saveMessageMongo({
+      session_id: sessionId,
+      user_id: user.id,
       role: 'assistant',
-      content: aiResponse,
-      intent: 'suggestion'
+      content: aiResponse.summary,
+      recommended: aiResponse.recommended,
+      intent: aiResponse.intent ?? 'suggestion',
+      products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
+      createdAt: new Date().toISOString(),
     })
     logger.info('Messaggio AI salvato', { aiMessageId })
 
-    // 8. Salva prodotti associati
-    await saveMessageProducts(aiMessageId, skus)
-    logger.info('Prodotti associati salvati al messaggio AI', { aiMessageId, skus })
-
-    // 9. Risposta finale
     return NextResponse.json({
-      content: aiResponse,
-      products,
-      intent: 'suggestion'
+      summary: aiResponse.summary,
+      recommended: aiResponse.recommended,
+      products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
+      intent: aiResponse.intent ?? 'suggestion'
     })
   } catch (err) {
     logger.error('Errore in /api/chat', { error: (err as Error).message })

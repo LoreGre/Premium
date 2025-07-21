@@ -1,9 +1,13 @@
 import { createClient } from '@/lib/supabase/client'
 import type { ProductItem } from './types'
 
+/**
+ * Ritorna la risposta AI e i prodotti consigliati dalla chat
+ */
 type ChatApiResponse = {
-  content: string
-  products?: ProductItem[]
+  summary: string
+  recommended: { sku: string; reason: string }[]
+  products: ProductItem[]
   intent?: string
 }
 
@@ -11,8 +15,8 @@ export async function sendChatMessage(
   message: string,
   sessionId: string
 ): Promise<ChatApiResponse> {
+  // AUTH con Supabase
   const supabase = createClient()
-
   const {
     data: { session },
     error
@@ -22,6 +26,7 @@ export async function sendChatMessage(
     throw new Error('Utente non autenticato')
   }
 
+  // CHIAMATA API
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: {
@@ -43,12 +48,14 @@ export async function sendChatMessage(
     throw new Error('Risposta JSON non valida dalla API')
   }
 
-  if (!data.content) {
+  // Validazione: deve esserci almeno un summary
+  if (!data.summary) {
     throw new Error('La risposta della chat è vuota')
   }
 
   return {
-    content: data.content,
+    summary: data.summary,
+    recommended: data.recommended || [],
     products: data.products || [],
     intent: data.intent
   }

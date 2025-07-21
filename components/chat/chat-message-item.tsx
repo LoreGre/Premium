@@ -2,12 +2,27 @@
 
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Eye, ShoppingCart } from 'lucide-react'
+import { Eye, ShoppingCart, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from './types'
+import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 export function ChatMessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
+
+  // Stato feedback locale, inizializzato dal messaggio se presente
+  const initial =
+    message.feedback?.rating === 'positive'
+      ? 'positive'
+      : message.feedback?.rating === 'negative'
+      ? 'negative'
+      : undefined
+
+  const [feedback, setFeedback] = useState<'positive' | 'negative' | undefined>(initial)
+
+  // Instanzia client Supabase per auth e token
+  const supabase = createClient()
 
   const formattedTime = message.createdAt
     ? new Date(message.createdAt).toLocaleTimeString('it-IT', {
@@ -17,6 +32,47 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
     : null
 
   const products = message.products ?? []
+  // Mappa SKU → motivazione AI (reason)
+  const reasons: Record<string, string> =
+    message.recommended?.reduce((acc, rec) => {
+      acc[rec.sku] = rec.reason
+      return acc
+    }, {} as Record<string, string>) || {}
+
+  // Funzione per inviare feedback al backend e aggiornare stato UI
+  const handleFeedback = async (rating: 'positive' | 'negative') => {
+    setFeedback(rating)
+
+    try {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
+
+      if (!session?.access_token) {
+        console.error('Utente non autenticato per feedback')
+        return
+      }
+
+      const res = await fetch('/api/chat/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          messageId: message._id,
+          rating,
+          comment: '' // puoi estendere per commenti utente
+        })
+      })
+
+      if (!res.ok) {
+        console.error('Errore nel salvataggio del feedback')
+      }
+    } catch (error) {
+      console.error('Errore di rete nel feedback', error)
+    }
+  }
 
   return (
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -37,7 +93,7 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
           <p className="text-[10px] mt-1 text-right opacity-60">{formattedTime}</p>
         )}
 
-        {/* Prodotti suggeriti (solo se assistant) */}
+        {/* Prodotti suggeriti (solo assistant) */}
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
@@ -63,17 +119,19 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
                       <p className="text-xs mt-1 text-green-600">
                         {product.available ? 'Disponibile' : 'Non disponibile'}
                       </p>
+                      {/* Motivazione AI */}
+                      {reasons[product.sku] && (
+                        <p className="text-xs mt-1 text-blue-700 italic">
+                          <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="absolute bottom-2 right-2 flex flex-row gap-1">
                   {product.link && (
-                    <a
-                      href={product.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                    <a href={product.link} target="_blank" rel="noopener noreferrer">
                       <Button
                         size="icon"
                         variant="ghost"
@@ -97,6 +155,38 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Feedback (solo assistant) */}
+        {!isUser && (
+          <div className="flex gap-2 mt-2 items-center">
+            {!feedback ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-8 h-8 hover:bg-green-100"
+                  aria-label="Feedback positivo"
+                  onClick={() => handleFeedback('positive')}
+                >
+                  <ThumbsUp className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-8 h-8 hover:bg-red-100"
+                  aria-label="Feedback negativo"
+                  onClick={() => handleFeedback('negative')}
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <span className="text-xs opacity-70 pl-1">
+                {feedback === 'positive' ? 'Grazie per il feedback 👍' : 'Grazie per il feedback 👎'}
+              </span>
+            )}
           </div>
         )}
       </div>

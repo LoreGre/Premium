@@ -1,87 +1,90 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getMongoClient } from '@/lib/mongo/client'
+import { ObjectId } from 'mongodb'
+import { getMongoCollection } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
-import { getEmbedding } from './chat-embedding'
-import type { ProductItem } from './types'
+import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession } from './types'
 import { logger } from '@/lib/logger'
 
-const supabase = createAdminClient()
-const openai = new OpenAI()
+// ===============================
+// 1. SESSIONI CHAT
+// ===============================
 
-export async function createChatSession(userId?: string) {
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .insert([{ user_id: userId ?? null }])
-    .select('id')
-    .single()
-
-  if (error) {
-    logger.error('Errore creazione sessione', { error })
-    throw new Error(`Errore creazione sessione: ${error.message}`)
-  }
-  logger.info('Sessione creata', { userId, sessionId: data.id })
-  return data.id as string
+/**
+ * Crea una nuova sessione chat per uno user
+ * @param userId - id univoco utente autenticato
+ * @returns sessionId MongoDB come stringa
+ */
+export async function createChatSession(userId: string): Promise<string> {
+  const sessions = await getMongoCollection<ChatSession>('chat_sessions')
+  const now = new Date().toISOString()
+  const res = await sessions.insertOne({
+    user_id: userId,
+    createdAt: now
+  })
+  logger.info('Sessione creata', { userId, sessionId: res.insertedId.toString() })
+  return res.insertedId.toString()
 }
 
-export async function saveMessage({
-  sessionId,
-  role,
-  content,
-  embedding,
-  userId,
-  intent = null
-}: {
-  sessionId: string
-  role: 'user' | 'assistant'
-  content: string
-  embedding?: number[]
-  userId?: string
-  intent?: string | null
-}) {
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert([
-      {
-        session_id: sessionId,
-        user_id: userId ?? null,
-        role,
-        content,
-        embedding,
-        intent,
-        created_at: new Date().toISOString()
-      }
-    ])
-    .select('id')
-    .single()
+// ===============================
+// 2. CRUD MESSAGGI CHAT
+// ===============================
 
-  if (error) {
-    logger.error('Errore salvataggio messaggio', { error })
-    throw new Error(`Errore salvataggio messaggio: ${error.message}`)
+/**
+ * Salva un messaggio nella collection chat_messages
+ * @param msg - oggetto messaggio parziale (verifica che tutti i campi obbligatori siano presenti)
+ * @returns id del messaggio appena salvato (string)
+ */
+export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
+  const messages = await getMongoCollection<ChatMessage>('chat_messages')
+  const toInsert: ChatMessage = {
+    session_id: msg.session_id!,
+    user_id: msg.user_id!,
+    role: msg.role!,
+    content: msg.content!,
+    createdAt: msg.createdAt || new Date().toISOString(),
+    products: msg.products,
+    recommended: msg.recommended,
+    intent: msg.intent,
+    embedding: msg.embedding,
+    feedback: msg.feedback,
   }
-  logger.info('Messaggio salvato', { sessionId, role, messageId: data.id })
-  return data.id as string
+  const { insertedId } = await messages.insertOne(toInsert)
+  logger.info('Messaggio salvato su Mongo', { role: msg.role, session_id: msg.session_id, messageId: insertedId })
+  return insertedId.toString()
 }
 
-export async function saveMessageProducts(messageId: string, skus: string[]) {
-  if (skus.length === 0) return
+// ===============================
+// 3. HISTORY CONVERSAZIONE (memoria breve)
+// ===============================
 
-  const rows = skus.map((sku) => ({ message_id: messageId, sku }))
-  const { error } = await supabase.from('chat_products').insert(rows)
-
-  if (error) {
-    logger.error('Errore salvataggio prodotti', { error })
-    throw new Error(`Errore salvataggio prodotti: ${error.message}`)
-  }
-  logger.info('Prodotti associati salvati', { messageId, skus })
+/**
+ * Restituisce la history della sessione (solo role+content)
+ * Usato per "memoria breve" del prompt
+ * @param sessionId - id della sessione
+ * @param limit - quanti messaggi vuoi recuperare (default 5)
+ */
+export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
+  const messages = await getMongoCollection<ChatMessage>('chat_messages')
+  const history = await messages
+    .find({ session_id: sessionId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .toArray()
+  // Solo { role, content } e ordinati dal più vecchio al più nuovo
+  return history.reverse().map(m => ({ role: m.role, content: m.content }))
 }
 
+// ===============================
+// 4. RICERCA PRODOTTI HYBRID (Vector + Text)
+// ===============================
+
+/**
+ * Ricerca prodotti tramite vector search su Mongo
+ */
 export async function searchByVectorMongo(queryVector: number[], limit = 5): Promise<(ProductItem & { score: number })[]> {
-  const client = await getMongoClient()
-  const db = client.db('Premium')
-
-  const results = await db.collection('prodotti').aggregate([
+  const prodotti = await getMongoCollection<ProductItem>('prodotti')
+  const results = await prodotti.aggregate([
     {
       $vectorSearch: {
         index: 'prodotti_vector_index',
@@ -96,10 +99,10 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         sku: 1,
         name: 1,
         description: 1,
-        price: '$unit_price',
+        price: 1,
         qty: 1,
-        available: { $gt: ['$qty', 0] },
-        supplier: '$source',
+        available: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -108,15 +111,15 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
       }
     }
   ]).toArray()
-
   return results as (ProductItem & { score: number })[]
 }
 
+/**
+ * Ricerca prodotti tramite text search su Mongo
+ */
 export async function searchByTextMongo(query: string, limit = 5): Promise<(ProductItem & { score: number })[]> {
-  const client = await getMongoClient()
-  const db = client.db('Premium')
-
-  const results = await db.collection('prodotti').aggregate([
+  const prodotti = await getMongoCollection<ProductItem>('prodotti')
+  const results = await prodotti.aggregate([
     {
       $search: {
         index: 'prodotti_index',
@@ -133,10 +136,10 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         sku: 1,
         name: 1,
         description: 1,
-        price: '$unit_price',
+        price: 1,
         qty: 1,
-        available: { $gt: ['$qty', 0] },
-        supplier: '$source',
+        available: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -145,118 +148,154 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
       }
     }
   ]).toArray()
-
   return results as (ProductItem & { score: number })[]
 }
 
+/**
+ * Ricerca Hybrid combinata (vector + text + ranking)
+ */
 type ProductHybridResult = ProductItem & {
   vectorScore?: number
   textScore?: number
   hybridScore: number
 }
 
-export async function searchHybridFallback(query: string, limit = 5): Promise<ProductHybridResult[]> {
-  const embedding = await getEmbedding(query)
-
+export async function searchHybridMongo(
+  query: string,
+  embedding: number[],
+  limit = 5
+): Promise<ProductHybridResult[]> {
   const [vectorResults, textResults] = await Promise.all([
     searchByVectorMongo(embedding, limit * 2),
     searchByTextMongo(query, limit * 2)
   ])
-
   const merged: Record<string, ProductHybridResult> = {}
-
   for (const v of vectorResults) {
     merged[v.sku] = {
-      sku: v.sku,
-      name: v.name,
-      description: v.description ?? '',
-      price: v.price ?? 0,
-      available: v.available ?? false,
-      qty: v.qty,
-      supplier: v.supplier ?? '',
-      category_name: v.category_name ?? '',
-      thumbnail: v.thumbnail ?? '',
-      link: v.link ?? '',
-      colore: v.colore ?? '',
+      ...v,
       vectorScore: v.score,
       hybridScore: v.score * 3
     }
   }
-
   for (const t of textResults) {
     if (merged[t.sku]) {
       merged[t.sku].textScore = t.score
       merged[t.sku].hybridScore += t.score
     } else {
       merged[t.sku] = {
-        sku: t.sku,
-        name: t.name,
-        description: t.description ?? '',
-        price: t.price ?? 0,
-        available: t.available ?? false,
-        qty: t.qty,
-        supplier: t.supplier ?? '',
-        category_name: t.category_name ?? '',
-        thumbnail: t.thumbnail ?? '',
-        link: t.link ?? '',
-        colore: t.colore ?? '',
-        vectorScore: t.score,
+        ...t,
+        textScore: t.score,
         hybridScore: t.score * 3
       }
     }
   }
-
   const final = Object.values(merged)
     .sort((a, b) => b.hybridScore - a.hybridScore)
     .slice(0, limit)
-
-  logger.info('[searchHybridFallback] risultati finali', { count: final.length, skus: final.map(x => x.sku) })
+  logger.info('[searchHybridMongo] risultati finali', { count: final.length, skus: final.map(x => x.sku) })
   return final
 }
 
-export async function generateChatResponse(
-  message: string,
+// ===============================
+// 5. GENERAZIONE RISPOSTA AI (Prompt dinamico + output JSON)
+// ===============================
+
+const openai = new OpenAI()
+
+/**
+ * Costruisce prompt, chiama GPT-4o e restituisce output JSON parsed
+ * @param message - domanda utente
+ * @param products - prodotti da proporre
+ * @param history - memoria breve (optional)
+ * @returns oggetto ChatAIResponse
+ */
+export async function generateChatResponse({
+  message,
+  products,
+  history
+}: {
+  message: string
   products: ProductItem[]
-): Promise<string> {
-  const productList = products
-    .map((p) => `- ${p.name} (€${p.price})`)
-    .join('\n')
-
+  history?: { role: string, content: string }[]
+}): Promise<ChatAIResponse> {
   const prompt = `
-Rispondi all'utente in modo amichevole e professionale, come se fossi un esperto di gadget aziendali pronto ad aiutare con dei consigli. 
-Hai ricevuto questa richiesta:
+🔸 USER_GOAL:
+${message}
 
-"${message}"
+${history && history.length
+  ? '🔸 CONVERSATION_HISTORY:\n' +
+    history.map(h => `[${h.role}] ${h.content}`).join('\n') +
+    '\n'
+  : ''
+}
+🔸 PRODUCT_CONTEXT:
+${products.map((p) =>
+  `- ${p.name} (${p.price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
 
-Tra i prodotti che puoi proporre ci sono:
-${productList}
+🔸 CONSTRAINTS:
+- Suggerisci massimo 3 prodotti
+- Motiva la scelta per ciascuno (campo "reason")
 
-Suggerisci alcuni tra questi articoli, motivando brevemente perché potrebbero essere adatti alla richiesta dell’utente. Non limitarti a elencarli: fai una raccomandazione utile, naturale e personalizzata. Evita di sembrare un robot.
+🔸 FORMAT_OUTPUT:
+{
+  "summary": "...",
+  "recommended": [
+    { "sku": "...", "reason": "..." }
+  ]
+}
+Rispondi solo in JSON valido.
 `.trim()
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
+    temperature: 0.5,
     messages: [
       {
         role: 'system',
-        content: `Sei un assistente esperto di prodotti promozionali aziendali. Parla in modo chiaro, utile e naturale. Il tuo obiettivo è consigliare all'utente i gadget più adatti alle sue esigenze.`
+        content: 'Sei un assistente esperto di prodotti promozionali. Rispondi solo in JSON valido.'
       },
       {
         role: 'user',
         content: prompt
       }
     ],
-    temperature: 0.7,
+    response_format: { type: 'json_object' },
     max_tokens: 600
   })
 
-  const content = completion.choices[0]?.message?.content
+  const rawContent = completion.choices[0]?.message?.content
+  if (!rawContent) throw new Error('Risposta AI vuota')
+  logger.info('Risposta AI raw', { rawContent })
 
-  if (!content) {
-    logger.error('Risposta AI vuota o malformata')
-    throw new Error('Risposta AI vuota o malformata')
+  let parsed: ChatAIResponse
+  try {
+    parsed = JSON.parse(rawContent)
+  } catch {
+    logger.error('Parsing JSON risposta AI fallito', { rawContent })
+    throw new Error('Risposta AI non in JSON')
   }
+  logger.info('Risposta AI generata', { summary: parsed.summary, nRecommended: parsed.recommended.length })
+  return parsed
+}
 
-  logger.info('Risposta AI generata')
-  return content
+// ===============================
+// 6. FEEDBACK SU MESSAGGIO (aggiornamento)
+// ===============================
+
+/**
+ * Aggiorna il feedback di un messaggio (PATCH)
+ * @param messageId - Mongo ObjectId del messaggio
+ * @param feedback - oggetto feedback ({ rating, comment?, timestamp })
+ */
+export async function updateMessageFeedback(
+  messageId: string,
+  feedback: { rating: 'positive' | 'negative' | 'neutral', comment?: string }
+): Promise<void> {
+  const messages = await getMongoCollection<ChatMessage>('chat_messages')
+  const timestamp = new Date().toISOString()
+  await messages.updateOne(
+    { _id: new ObjectId(messageId) },
+    { $set: { feedback: { ...feedback, timestamp } } }
+  )
+  logger.info('Feedback aggiornato', { messageId, feedback })
 }

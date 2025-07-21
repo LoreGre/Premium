@@ -1,17 +1,19 @@
 import { OpenAI } from 'openai'
 
 const openai = new OpenAI()
+const EMBEDDING_MODEL = 'text-embedding-3-small'
 
 /**
- * Genera l'embedding vettoriale per una stringa testuale
- * @param text stringa da convertire
- * @returns numero[] (embedding vettoriale)
+ * Genera embedding vettoriale per testo (sanitize incluso)
+ * @param text - testo da embeddare
+ * @returns number[] embedding OpenAI
  */
 export async function getEmbedding(text: string): Promise<number[]> {
-  const input = text.replace(/\n/g, ' ').trim()
+  // Sanitize: newline, lower, trim, collapse spaces
+  const input = text.replace(/\n/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim()
 
   const res = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model: EMBEDDING_MODEL,
     input
   })
 
