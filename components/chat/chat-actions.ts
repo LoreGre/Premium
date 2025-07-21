@@ -5,13 +5,12 @@ import { getMongoClient } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import { getEmbedding } from './chat-embedding'
 import type { ProductItem } from './types'
-import { getLogger } from '@/lib/logger'
+import { logger } from '@/lib/logger'
 
 const supabase = createAdminClient()
 const openai = new OpenAI()
 
 export async function createChatSession(userId?: string) {
-  const logger = await getLogger()
   const { data, error } = await supabase
     .from('chat_sessions')
     .insert([{ user_id: userId ?? null }])
@@ -41,7 +40,6 @@ export async function saveMessage({
   userId?: string
   intent?: string | null
 }) {
-  const logger = await getLogger()
   const { data, error } = await supabase
     .from('chat_messages')
     .insert([
@@ -67,7 +65,6 @@ export async function saveMessage({
 }
 
 export async function saveMessageProducts(messageId: string, skus: string[]) {
-  const logger = await getLogger()
   if (skus.length === 0) return
 
   const rows = skus.map((sku) => ({ message_id: messageId, sku }))
@@ -159,7 +156,6 @@ type ProductHybridResult = ProductItem & {
 }
 
 export async function searchHybridFallback(query: string, limit = 5): Promise<ProductHybridResult[]> {
-  const logger = await getLogger()
   const embedding = await getEmbedding(query)
 
   const [vectorResults, textResults] = await Promise.all([
@@ -222,7 +218,6 @@ export async function generateChatResponse(
   message: string,
   products: ProductItem[]
 ): Promise<string> {
-  const logger = await getLogger()
   const productList = products
     .map((p) => `- ${p.name} (€${p.price})`)
     .join('\n')

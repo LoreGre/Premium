@@ -8,10 +8,11 @@ import {
 } from '@/components/chat/chat-actions'
 import { searchHybridFallback } from '@/components/chat/chat-actions'
 import type { ProductItem } from '@/components/chat/types'
-import { getLogger } from '@/lib/logger'
+import { logger } from '@/lib/logger'
+
 
 export async function POST(req: Request) {
-  const logger = await getLogger()
+
   try {
     const supabase = createAdminClient()
 
@@ -104,7 +105,6 @@ export async function POST(req: Request) {
       intent: 'suggestion'
     })
   } catch (err) {
-    const logger = await getLogger()
     logger.error('Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }

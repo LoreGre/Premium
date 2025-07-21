@@ -4,7 +4,8 @@ import Papa from 'papaparse'
 import { parseRow } from '@/lib/api/silan/parseRow'
 import { upsertProdottoMongo } from '@/lib/api/silan/mongo/upsert'
 import { RowCSV } from '@/lib/api/silan/types'
-import { getLogger } from '@/lib/logger'
+import { logger } from '@/lib/logger'
+
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -12,7 +13,6 @@ const CSV_PATH = 'silan_master_file_full.csv'
 const API_KEY = process.env.PREMIUM_SECRET_TOKEN
 
 export async function POST(req: Request) {
-  const logger = await getLogger()
   const { searchParams } = new URL(req.url)
   const offset = parseInt(searchParams.get('offset') || '0', 10)
   const limit = parseInt(searchParams.get('limit') || '500', 10)

@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Papa from 'papaparse'
 import { updateQtyInMongo } from '@/lib/api/silan/mongo/updateQty'
 import type { QtyUpdateRow, RowCSV } from '@/lib/api/silan/types'
-import { getLogger } from '@/lib/logger'
+import { logger } from '@/lib/logger'
+
 
 // CONFIG
 const BUCKET = 'csv-files'
@@ -11,7 +12,6 @@ const CSV_PATH = 'silan_stock_price_full.csv'
 const API_KEY = process.env.PREMIUM_SECRET_TOKEN
 
 export async function POST(req: Request) {
-  const logger = await getLogger()
   const { searchParams } = new URL(req.url)
   const offset = parseInt(searchParams.get('offset') || '0', 10)
   const limit = parseInt(searchParams.get('limit') || '500', 10)
