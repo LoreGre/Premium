@@ -1,86 +1,77 @@
 import type { ObjectId } from 'mongodb'
 
-// ============================
-// TIPO PRODOTTO
-// ============================
-
-/**
- * Descrive un prodotto suggerito o ricercato nella chat
- */
+// ------------------ PRODOTTI ------------------
 export type ProductItem = {
-  sku: string                    // Codice univoco del prodotto
-  name: string                   // Nome del prodotto
-  description: string            // Descrizione testuale
-  price: number                  // Prezzo unitario
-  available: boolean             // Disponibilità stock (>0)
-  qty?: number                   // Quantità disponibile (opzionale)
-  supplier: string               // Nome o codice fornitore
-  category_name?: string         // Categoria prodotto (opzionale)
-  thumbnail: string              // URL thumbnail immagine prodotto
-  link?: string                  // Link esterno pagina prodotto (opzionale)
-  colore?: string                // Colore (opzionale)
-  score?: number                 // Score ranking da search (opzionale, per ranking)
+  sku: string
+  name: string
+  description: string
+  price: number
+  available: boolean
+  qty?: number
+  supplier: string
+  category_name?: string
+  thumbnail: string
+  link?: string
+  colore?: string
+  score?: number
 }
 
-// ============================
-// OUTPUT AI (JSON RAGIONATO)
-// ============================
+// ------------------ ENTITÀ ------------------
+export type ExtractedEntity = {
+  type: 'color' | 'size' | 'category' | 'sku' | 'quantity' | 'supplier' | 'other'
+  value: string | number
+}
 
-/**
- * Struttura della risposta AI in formato JSON, ottimizzata per ragionamento e UI
- */
+// ------------------ RISPOSTA AI ------------------
 export type ChatAIResponse = {
-  summary: string                              // Riepilogo/testo naturale AI (intro risposta)
-  recommended: {                               // Prodotti raccomandati (max 3 tipicamente)
-    sku: string                                // SKU prodotto raccomandato
-    reason: string                             // Motivazione testuale scelta
+  summary: string
+  recommended: {
+    sku: string
+    reason: string
   }[]
-  intent?: string                              // (Futuro) intent classificato AI (es: richiesta, saluto, feedback)
+  intent?: 'info' | 'purchase' | 'support' | 'greeting' | 'feedback' | 'compare' | 'other'
+  entities?: ExtractedEntity[]
 }
 
-// ============================
-// FEEDBACK UTENTE
-// ============================
-
-/**
- * Feedback strutturato dell’utente su una risposta assistant (per analytics/training)
- */
+// ------------------ FEEDBACK UTENTE ------------------
 export type Feedback = {
-  rating: 'positive' | 'negative' | 'neutral'  // Valutazione espressa (es. thumbs up/down/neutral)
-  comment?: string                             // Testo libero utente (opzionale)
-  timestamp: string                            // Quando il feedback è stato lasciato (ISO)
+  rating: 'positive' | 'negative' | 'neutral'
+  comment?: string
+  timestamp: string
 }
 
-// ============================
-// MESSAGGIO CHAT
-// ============================
-
-/**
- * Messaggio salvato su MongoDB (user o assistant)
- */
+// ------------------ MESSAGGIO CHAT (DB) ------------------
 export type ChatMessage = {
-  _id?: ObjectId                                  // Mongo ObjectId (opzionale su insert/read)
-  session_id: string                            // Id sessione chat (collega alla sessione/thread)
-  user_id: string                               // User id associato (owner o AI)
-  role: 'user' | 'assistant'                    // Ruolo: utente umano o AI
-  content: string                               // Testo messaggio (prompt user o summary AI)
-  products?: ProductItem[]                      // Prodotti menzionati/suggeriti (opzionale)
-  recommended?: { sku: string; reason: string }[] // Raccomandazioni assistant (solo AI)
-  intent?: string                               // Intent (classificazione, opzionale)
-  embedding?: number[]                          // Embedding vettoriale del messaggio (per vector search)
-  feedback?: Feedback                           // Eventuale feedback lasciato dall’utente
-  createdAt: string                             // Timestamp ISO (quando salvato)
+  _id?: ObjectId
+  session_id: ObjectId
+  user_id: string
+  role: 'user' | 'assistant'
+  content: string
+  products?: ProductItem[]
+  recommended?: { sku: string; reason: string }[]
+  intent?: string
+  embedding?: number[]
+  feedback?: Feedback
+  entities?: ExtractedEntity[]
+  createdAt: string
 }
 
-// ============================
-// SESSIONE CHAT
-// ============================
+// ------------------ MESSAGGIO CHAT (UI) ------------------
+export type UIMessage = Omit<ChatMessage, 'session_id'> & {
+  session_id: string
+  _ui_id: string
+}
 
-/**
- * Sessione (thread) chat, una per utente/conversazione
- */
+// ------------------ SESSIONE CHAT ------------------
 export type ChatSession = {
-  _id?: string                                  // Mongo ObjectId sessione (opzionale)
-  user_id: string                               // User id proprietario della sessione
-  createdAt: string                             // Timestamp ISO creazione sessione
+  _id?: ObjectId
+  user_id: string
+  createdAt: string
+  updatedAt?: string
+}
+
+// ------------------ CONTESTO CONVERSAZIONALE ------------------
+export type ChatContext = {
+  messages: ChatMessage[]
+  sessionId: string
 }

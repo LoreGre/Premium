@@ -3,7 +3,7 @@
 import { ObjectId } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
-import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession } from './types'
+import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession, ChatContext, ExtractedEntity } from './types'
 import { logger } from '@/lib/logger'
 
 // ===============================
@@ -20,7 +20,8 @@ export async function createChatSession(userId: string): Promise<string> {
   const now = new Date().toISOString()
   const res = await sessions.insertOne({
     user_id: userId,
-    createdAt: now
+    createdAt: now,
+    updatedAt: now
   })
   logger.info('Sessione creata', { userId, sessionId: res.insertedId.toString() })
   return res.insertedId.toString()
@@ -37,8 +38,9 @@ export async function createChatSession(userId: string): Promise<string> {
  */
 export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
+
   const toInsert: ChatMessage = {
-    session_id: msg.session_id!,
+    session_id: typeof msg.session_id === 'string' ? new ObjectId(msg.session_id) : msg.session_id!,
     user_id: msg.user_id!,
     role: msg.role!,
     content: msg.content!,
@@ -48,11 +50,27 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
     intent: msg.intent,
     embedding: msg.embedding,
     feedback: msg.feedback,
+    entities: msg.entities
   }
+
   const { insertedId } = await messages.insertOne(toInsert)
-  logger.info('Messaggio salvato su Mongo', { role: msg.role, session_id: msg.session_id, messageId: insertedId })
+
+  const sessions = await getMongoCollection<ChatSession>('chat_sessions')
+  await sessions.updateOne(
+    { _id: toInsert.session_id },
+    { $set: { updatedAt: new Date().toISOString() } }
+  )
+
+  logger.info('Messaggio salvato su Mongo', {
+    role: msg.role,
+    session_id: toInsert.session_id.toString(),
+    messageId: insertedId.toString()
+  })
+
   return insertedId.toString()
 }
+
+
 
 // ===============================
 // 3. HISTORY CONVERSAZIONE (memoria breve)
@@ -67,13 +85,14 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
 export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
   const history = await messages
-    .find({ session_id: sessionId })
+    .find({ session_id: new ObjectId(sessionId) })
     .sort({ createdAt: -1 })
     .limit(limit)
     .toArray()
-  // Solo { role, content } e ordinati dal più vecchio al più nuovo
-  return history.reverse().map(m => ({ role: m.role, content: m.content }))
+
+    return history.reverse() // ✅ restituisce ChatMessage[]
 }
+
 
 // ===============================
 // 4. RICERCA PRODOTTI HYBRID (Vector + Text)
@@ -212,19 +231,24 @@ const openai = new OpenAI()
 export async function generateChatResponse({
   message,
   products,
-  history
+  contextMessages,
+  entities
 }: {
   message: string
   products: ProductItem[]
-  history?: { role: string, content: string }[]
+  contextMessages?: ChatMessage[]
+  entities?: ExtractedEntity[]
 }): Promise<ChatAIResponse> {
+
   const prompt = `
 🔸 USER_GOAL:
 ${message}
 
-${history && history.length
+${entities?.length ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n') : ''}
+
+${contextMessages?.length
   ? '🔸 CONVERSATION_HISTORY:\n' +
-    history.map(h => `[${h.role}] ${h.content}`).join('\n') +
+    contextMessages.map(h => `[${h.role}] ${h.content}`).join('\n') +
     '\n'
   : ''
 }
@@ -233,15 +257,18 @@ ${products.map((p) =>
   `- ${p.name} (${p.price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
 
 🔸 CONSTRAINTS:
-- Suggerisci massimo 3 prodotti
+- Suggerisci massimo 4 prodotti
 - Motiva la scelta per ciascuno (campo "reason")
+- Classifica l'intento tra info, purchase, support, greeting, feedback, compare, other
 
 🔸 FORMAT_OUTPUT:
 {
   "summary": "...",
   "recommended": [
     { "sku": "...", "reason": "..." }
-  ]
+  ],
+  "intent": "...",
+  "entities": [{"type": "...", "value": "..."}]
 }
 Rispondi solo in JSON valido.
 `.trim()
@@ -260,12 +287,11 @@ Rispondi solo in JSON valido.
       }
     ],
     response_format: { type: 'json_object' },
-    max_tokens: 600
+    max_tokens: 800
   })
 
   const rawContent = completion.choices[0]?.message?.content
   if (!rawContent) throw new Error('Risposta AI vuota')
-  logger.info('Risposta AI raw', { rawContent })
 
   let parsed: ChatAIResponse
   try {
@@ -274,9 +300,11 @@ Rispondi solo in JSON valido.
     logger.error('Parsing JSON risposta AI fallito', { rawContent })
     throw new Error('Risposta AI non in JSON')
   }
-  logger.info('Risposta AI generata', { summary: parsed.summary, nRecommended: parsed.recommended.length })
+
+  logger.info('Risposta AI generata', { summary: parsed.summary, intent: parsed.intent, nRecommended: parsed.recommended.length })
   return parsed
 }
+
 
 // ===============================
 // 6. FEEDBACK SU MESSAGGIO (aggiornamento)
@@ -298,4 +326,46 @@ export async function updateMessageFeedback(
     { $set: { feedback: { ...feedback, timestamp } } }
   )
   logger.info('Feedback aggiornato', { messageId, feedback })
+}
+
+
+export async function getConversationContext(sessionId: string, embedding: number[], limit = 5): Promise<ChatContext> {
+  const messages = await getMongoCollection<ChatMessage>('chat_messages')
+
+  const contextMessages = await messages.aggregate([
+    {
+      $vectorSearch: {
+        index: 'chat_messages_vector_index',
+        path: 'embedding',
+        queryVector: embedding,
+        numCandidates: 100,
+        limit: 20
+      }
+    },
+    {
+      $match: { session_id: new ObjectId(sessionId) }
+    },
+    {
+      $sort: { createdAt: -1 }
+    },
+    {
+      $limit: limit
+    },
+    {
+      $project: {
+        _id: 1,
+        content: 1,
+        role: 1,
+        session_id: 1,
+        user_id: 1,
+        createdAt: 1,
+        score: { $meta: 'vectorSearchScore' }
+      }
+    }
+  ]).toArray() as ChatMessage[] // 👈 cast esplicito
+
+  return {
+    sessionId,
+    messages: contextMessages
+  }
 }

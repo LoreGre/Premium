@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { updateMessageFeedback } from '@/components/chat/chat-actions'
 import { logger } from '@/lib/logger'
 
+const validRatings = ['positive', 'negative', 'neutral'] as const
+
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient()
@@ -29,6 +31,16 @@ export async function POST(req: Request) {
     if (!messageId || !rating) {
       logger.warn('Dati mancanti nel feedback')
       return NextResponse.json({ error: 'Dati mancanti' }, { status: 400 })
+    }
+
+    if (!validRatings.includes(rating)) {
+      logger.warn('Rating non valido nel feedback', { rating })
+      return NextResponse.json({ error: 'Rating non valido' }, { status: 400 })
+    }
+
+    if (typeof messageId !== 'string' || messageId.length !== 24) {
+      logger.warn('messageId non valido', { messageId })
+      return NextResponse.json({ error: 'ID messaggio non valido' }, { status: 400 })
     }
 
     await updateMessageFeedback(messageId, { rating, comment })

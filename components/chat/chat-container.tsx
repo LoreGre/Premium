@@ -8,34 +8,41 @@ import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'
 import type { ChatMessage } from './types'
 
-// Tipo che estende ChatMessage solo per gestire key React
-type UIMessage = ChatMessage & { _ui_id: string }
+// Tipo locale per il client
+export type UIMessage = Omit<ChatMessage, 'session_id'> & {
+  session_id: string
+  _ui_id: string
+}
 
 export function ChatContainer() {
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Scroll sempre in fondo ai messaggi
+  // Scroll automatico
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Init sessione chat all'avvio (con userId auth Supabase)
+  // Inizializzazione sessione
   useEffect(() => {
     const supabase = createClient()
     let active = true
 
     const initSession = async () => {
       const { data, error } = await supabase.auth.getUser()
+
       if (error || !data?.user) {
         console.error('Utente non autenticato')
+        setAuthError('⚠️ Utente non autenticato. Effettua il login.')
         return
       }
-      const sessionId = await createChatSession(data.user.id)
-      if (active) setSessionId(sessionId)
+
+      const newSessionId = await createChatSession(data.user.id)
+      if (active) setSessionId(newSessionId)
     }
 
     initSession()
@@ -48,7 +55,6 @@ export function ChatContainer() {
     const timestamp = new Date().toISOString()
     const uid = `${Date.now()}-${Math.random()}`
 
-    // Messaggio utente (solo per UI/React)
     const userMessage: UIMessage = {
       _ui_id: `user-${uid}`,
       session_id: sessionId,
@@ -58,9 +64,6 @@ export function ChatContainer() {
       createdAt: timestamp
     }
 
-    setMessages((prev) => [...prev, userMessage])
-
-    // Messaggio di loading AI (solo per UI)
     const loadingMessage: UIMessage = {
       _ui_id: `loading-${uid}`,
       session_id: sessionId,
@@ -70,16 +73,11 @@ export function ChatContainer() {
       createdAt: timestamp
     }
 
-    setMessages((prev) => [...prev, loadingMessage])
+    setMessages(prev => [...prev, userMessage, loadingMessage])
     setIsLoading(true)
 
     try {
       const res = await sendChatMessage(text, sessionId)
-      // res: { summary, recommended, products, intent }
-
-      setMessages((prev) =>
-        prev.filter((m) => m._ui_id !== loadingMessage._ui_id)
-      )
 
       const aiMessage: UIMessage = {
         _ui_id: `ai-${uid}`,
@@ -87,13 +85,15 @@ export function ChatContainer() {
         user_id: 'assistant',
         role: 'assistant',
         content: res.summary,
-        products: res.products || undefined,
-        intent: res.intent || undefined,
-        recommended: res.recommended || undefined,
+        products: res.products,
+        intent: res.intent,
+        recommended: res.recommended,
         createdAt: new Date().toISOString()
       }
 
-      setMessages((prev) => [...prev, aiMessage])
+      setMessages(prev =>
+        prev.filter(m => m._ui_id !== loadingMessage._ui_id).concat(aiMessage)
+      )
     } catch (err) {
       console.error(err)
 
@@ -106,10 +106,9 @@ export function ChatContainer() {
         createdAt: new Date().toISOString()
       }
 
-      setMessages((prev) => [
-        ...prev.filter((m) => m._ui_id !== loadingMessage._ui_id),
-        errorMessage
-      ])
+      setMessages(prev =>
+        prev.filter(m => m._ui_id !== loadingMessage._ui_id).concat(errorMessage)
+      )
     } finally {
       setIsLoading(false)
     }
@@ -117,19 +116,28 @@ export function ChatContainer() {
 
   return (
     <>
-      {/* Area scrollabile */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto w-full px-6 pt-6 pb-40">
-          {messages.map((msg) => (
+          {authError && (
+            <div className="text-red-500 text-center">{authError}</div>
+          )}
+
+          {messages.map(msg => (
             <ChatMessageItem key={msg._ui_id} message={msg} />
           ))}
+
           <div ref={scrollRef} className="h-1" />
         </div>
       </div>
 
-      {/* Input sempre in fondo al contenuto */}
       <div className="w-full border-t bg-background">
-        <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+        {sessionId ? (
+          <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+        ) : (
+          <div className="p-4 text-center text-gray-500">
+            {authError || 'Caricamento sessione...'}
+          </div>
+        )}
       </div>
     </>
   )

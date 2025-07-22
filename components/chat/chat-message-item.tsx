@@ -4,14 +4,13 @@ import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Eye, ShoppingCart, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ChatMessage } from './types'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import type { UIMessage } from './types' // 👈 usa UIMessage (tipizzato per il client)
 
-export function ChatMessageItem({ message }: { message: ChatMessage }) {
+export function ChatMessageItem({ message }: { message: UIMessage }) {
   const isUser = message.role === 'user'
 
-  // Stato feedback locale, inizializzato dal messaggio se presente
   const initial =
     message.feedback?.rating === 'positive'
       ? 'positive'
@@ -21,7 +20,6 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
 
   const [feedback, setFeedback] = useState<'positive' | 'negative' | undefined>(initial)
 
-  // Instanzia client Supabase per auth e token
   const supabase = createClient()
 
   const formattedTime = message.createdAt
@@ -32,14 +30,12 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
     : null
 
   const products = message.products ?? []
-  // Mappa SKU → motivazione AI (reason)
   const reasons: Record<string, string> =
     message.recommended?.reduce((acc, rec) => {
       acc[rec.sku] = rec.reason
       return acc
     }, {} as Record<string, string>) || {}
 
-  // Funzione per inviare feedback al backend e aggiornare stato UI
   const handleFeedback = async (rating: 'positive' | 'negative') => {
     setFeedback(rating)
 
@@ -62,7 +58,7 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
         body: JSON.stringify({
           messageId: message._id,
           rating,
-          comment: '' // puoi estendere per commenti utente
+          comment: '' // opzionale
         })
       })
 
@@ -85,15 +81,12 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
         )}
         title={message.createdAt ?? undefined}
       >
-        {/* Testo messaggio */}
         <p className="whitespace-pre-line">{message.content}</p>
 
-        {/* Orario */}
         {formattedTime && (
           <p className="text-[10px] mt-1 text-right opacity-60">{formattedTime}</p>
         )}
 
-        {/* Prodotti suggeriti (solo assistant) */}
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
@@ -119,7 +112,6 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
                       <p className="text-xs mt-1 text-green-600">
                         {product.available ? 'Disponibile' : 'Non disponibile'}
                       </p>
-                      {/* Motivazione AI */}
                       {reasons[product.sku] && (
                         <p className="text-xs mt-1 text-blue-700 italic">
                           <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
@@ -145,9 +137,7 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
                   <Button
                     size="icon"
                     className="w-8 h-8 border border-border"
-                    onClick={() => {
-                      console.log(`Aggiunto ${product.sku}`)
-                    }}
+                    onClick={() => console.log(`Aggiunto ${product.sku}`)}
                     aria-label="Aggiungi al carrello"
                   >
                     <ShoppingCart className="w-4 h-4" />
@@ -158,7 +148,6 @@ export function ChatMessageItem({ message }: { message: ChatMessage }) {
           </div>
         )}
 
-        {/* Feedback (solo assistant) */}
         {!isUser && (
           <div className="flex gap-2 mt-2 items-center">
             {!feedback ? (
