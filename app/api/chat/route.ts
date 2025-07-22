@@ -6,9 +6,9 @@ import {
   saveMessageMongo,
   generateChatResponse,
   getSessionHistoryMongo,
-  searchHybridMongo
+  getProductsByEntitiesAI
 } from '@/components/chat/chat-actions'
-import type { ProductItem, ChatAIResponse } from '@/components/chat/types'
+import type { ChatAIResponse } from '@/components/chat/types'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
@@ -59,21 +59,7 @@ export async function POST(req: Request) {
 
     const history = await getSessionHistoryMongo(sessionId, 5)
 
-    const hybridResults = await searchHybridMongo(message, embedding, 10)
-    const products: ProductItem[] = hybridResults.map(p => ({
-      sku: p.sku,
-      name: p.name,
-      description: p.description,
-      price: p.price,
-      available: p.available,
-      qty: p.qty,
-      supplier: p.supplier,
-      category_name: p.category_name,
-      thumbnail: p.thumbnail,
-      link: p.link,
-      colore: p.colore,
-      score: p.hybridScore
-    }))
+    const { products, entities } = await getProductsByEntitiesAI(message, embedding, 10)
     logger.info('Prodotti trovati', { productsCount: products.length, skus: products.map(p => p.sku) })
 
     const aiResponse: ChatAIResponse = await generateChatResponse({

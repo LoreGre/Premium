@@ -4,7 +4,9 @@ import { ObjectId } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession, ChatContext, ExtractedEntity } from './types'
+import { extractEntitiesLLM } from './chat-exctract-entities'
 import { logger } from '@/lib/logger'
+
 
 // ===============================
 // 1. SESSIONI CHAT
@@ -368,4 +370,46 @@ export async function getConversationContext(sessionId: string, embedding: numbe
     sessionId,
     messages: contextMessages
   }
+}
+
+
+/**
+ * Estrae entità dal messaggio utente tramite AI,
+ * costruisce la query su tutti i campi strutturati (sku, quantity, color, size, category, supplier...),
+ * cerca prodotti nel DB in modo filtrato,
+ * e fa fallback automatico sulla search ibrida se non trova nulla.
+ */
+export async function getProductsByEntitiesAI(
+  message: string,
+  embedding: number[],
+  maxResults = 10
+): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
+  const entities = await extractEntitiesLLM(message)
+  let query: any = {}
+
+  for (const e of entities) {
+    if (e.type === 'sku') {
+      if (!query.sku) query.sku = { $in: [] }
+      query.sku.$in.push(e.value)
+    }
+    if (e.type === 'quantity') query.qty = { $gte: Number(e.value) }
+    if (e.type === 'color') query.colore = e.value
+    if (e.type === 'size') query.size = e.value
+    if (e.type === 'category') query.category_name = e.value
+    if (e.type === 'supplier') query.supplier = e.value
+    // puoi aggiungere qui altri tipi di entità, sempre usando il tuo ExtractedEntity
+  }
+
+  let products: ProductItem[] = []
+  if (Object.keys(query).length) {
+    const prodottiColl = await getMongoCollection<ProductItem>('prodotti')
+    products = await prodottiColl.find(query).limit(maxResults).toArray()
+  }
+
+  // Fallback automatico se non trova nulla con query strutturata
+  if (!products.length) {
+    products = await searchHybridMongo(message, embedding, maxResults)
+  }
+
+  return { products, entities }
 }
