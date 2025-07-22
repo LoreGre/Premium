@@ -11,8 +11,8 @@ export const logger = winston.createLogger({
     new winston.transports.Console(),
     new winston.transports.MongoDB({
       db: process.env.MONGO_URI as string,
-      // RIMUOVI options: { useUnifiedTopology: true },
-      collection: 'logs'
+      dbName: process.env.MONGO_DB_NAME as string,
+      collection: 'Logs'
     })
   ]
 })
