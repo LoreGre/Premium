@@ -385,7 +385,9 @@ export async function getProductsByEntitiesAI(
   maxResults = 10
 ): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
   const entities = await extractEntitiesLLM(message)
-  let query: any = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const query: Record<string, any> = {}
+
 
   for (const e of entities) {
     if (e.type === 'sku') {

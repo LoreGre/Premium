@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 
     const history = await getSessionHistoryMongo(sessionId, 5)
 
-    const { products, entities } = await getProductsByEntitiesAI(message, embedding, 10)
+    const { products } = await getProductsByEntitiesAI(message, embedding, 10)
     logger.info('Prodotti trovati', { productsCount: products.length, skus: products.map(p => p.sku) })
 
     const aiResponse: ChatAIResponse = await generateChatResponse({
