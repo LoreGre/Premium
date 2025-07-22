@@ -91,9 +91,12 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
         )}
         title={message.createdAt ?? undefined}
       >
-        <p className="whitespace-pre-line">
-          {message.isTyping ? <TypingDots /> : message.content}
-        </p>
+        {message.isTyping ? (
+          <TypingDots />
+        ) : (
+          <p className="whitespace-pre-line">{message.content}</p>
+        )}
+
 
         {formattedTime && (
           <p className="text-[10px] mt-1 text-right opacity-60">{formattedTime}</p>

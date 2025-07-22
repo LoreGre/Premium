@@ -81,17 +81,18 @@ export async function POST(req: Request) {
       recommended: aiResponse.recommended,
       intent: aiResponse.intent ?? 'suggestion',
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
-      entities: aiResponse.entities,
+      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       createdAt: new Date().toISOString()
     })
     logger.info('Messaggio AI salvato', { aiMessageId })
+
 
     return NextResponse.json({
       summary: aiResponse.summary,
       recommended: aiResponse.recommended,
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
-      entities: aiResponse.entities ?? [],
+      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       _id: aiMessageId?.toString() // <<--- AGGIUNGI QUI!
     })
   } catch (err) {

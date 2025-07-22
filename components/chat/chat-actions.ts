@@ -246,7 +246,8 @@ export async function generateChatResponse({
 🔸 USER_GOAL:
 ${message}
 
-${entities?.length ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n') : ''}
+${Array.isArray(entities) && entities.length ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n') : ''}
+
 
 ${contextMessages?.length
   ? '🔸 CONVERSATION_HISTORY:\n' +
@@ -389,7 +390,8 @@ export async function getProductsByEntitiesAI(
   const query: Record<string, any> = {}
 
 
-  for (const e of entities) {
+  const safeEntities = Array.isArray(entities) ? entities : [];
+  for (const e of safeEntities) {  
     if (e.type === 'sku') {
       if (!query.sku) query.sku = { $in: [] }
       query.sku.$in.push(e.value)

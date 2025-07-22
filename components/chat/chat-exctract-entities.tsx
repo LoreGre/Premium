@@ -16,7 +16,7 @@ Le entità possibili sono:
 - supplier (fornitore, se indicato)
 - other (qualsiasi altro campo rilevante)
 
-Restituisci SOLO in JSON valido, come array di oggetti ExtractedEntity[].
+Restituisci SOLO in JSON valido, come array di oggetti ExtractedEntity[] anche se vuoto!
 
 Frase utente:
 """
