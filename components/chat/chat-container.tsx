@@ -8,8 +8,6 @@ import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'
 import type { UIMessage } from './types'
 
-
-
 export function ChatContainer() {
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -23,37 +21,33 @@ export function ChatContainer() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Inizializzazione sessione
-  useEffect(() => {
-    const supabase = createClient()
-    let active = true
+  // -- RIMOSSO: useEffect che crea la sessione appena si entra --
 
-    const initSession = async () => {
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return
+
+    let currentSessionId = sessionId
+
+    // Crea sessione SOLO al primo messaggio!
+    if (!currentSessionId) {
+      const supabase = createClient()
       const { data, error } = await supabase.auth.getUser()
 
       if (error || !data?.user) {
-        console.error('Utente non autenticato')
         setAuthError('⚠️ Utente non autenticato. Effettua il login.')
         return
       }
 
-      const newSessionId = await createChatSession(data.user.id)
-      if (active) setSessionId(newSessionId)
+      currentSessionId = await createChatSession(data.user.id)
+      setSessionId(currentSessionId)
     }
-
-    initSession()
-    return () => { active = false }
-  }, [])
-
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || !sessionId) return
 
     const timestamp = new Date().toISOString()
     const uid = `${Date.now()}-${Math.random()}`
 
     const userMessage: UIMessage = {
       _ui_id: `user-${uid}`,
-      session_id: sessionId,
+      session_id: currentSessionId,
       user_id: 'me',
       role: 'user',
       content: text,
@@ -62,22 +56,23 @@ export function ChatContainer() {
 
     const loadingMessage: UIMessage = {
       _ui_id: `loading-${uid}`,
-      session_id: sessionId,
+      session_id: currentSessionId,
       user_id: 'assistant',
       role: 'assistant',
-      content: 'Sto cercando i migliori prodotti per te...',
-      createdAt: timestamp
+      content: '', // vuoto!
+      createdAt: timestamp,
+      isTyping: true // nuovo!
     }
 
     setMessages(prev => [...prev, userMessage, loadingMessage])
     setIsLoading(true)
 
     try {
-      const res = await sendChatMessage(text, sessionId)
+      const res = await sendChatMessage(text, currentSessionId)
 
       const aiMessage: UIMessage = {
         _ui_id: `ai-${uid}`,
-        session_id: sessionId,
+        session_id: currentSessionId,
         user_id: 'assistant',
         role: 'assistant',
         content: res.summary,
@@ -85,7 +80,7 @@ export function ChatContainer() {
         intent: res.intent,
         recommended: res.recommended,
         createdAt: new Date().toISOString(),
-        _id: res._id // <-- AGGIUNGI QUESTO!
+        _id: res._id
       }
 
       setMessages(prev =>
@@ -96,7 +91,7 @@ export function ChatContainer() {
 
       const errorMessage: UIMessage = {
         _ui_id: `error-${uid}`,
-        session_id: sessionId,
+        session_id: currentSessionId!,
         user_id: 'assistant',
         role: 'assistant',
         content: '⚠️ Ops! Qualcosa è andato storto. Riprova.',
@@ -128,13 +123,7 @@ export function ChatContainer() {
       </div>
 
       <div className="w-full border-t bg-background">
-        {sessionId ? (
-          <ChatInput onSend={handleSendMessage} disabled={isLoading} />
-        ) : (
-          <div className="p-4 text-center text-gray-500">
-            {authError || 'Caricamento sessione...'}
-          </div>
-        )}
+        <ChatInput onSend={handleSendMessage} disabled={isLoading} />
       </div>
     </>
   )

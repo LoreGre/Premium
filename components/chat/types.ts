@@ -61,6 +61,7 @@ export type UIMessage = Omit<ChatMessage, 'session_id' | '_id'> & {
   session_id: string
   _ui_id: string
   _id?: string // <-- solo string!
+  isTyping?: boolean
 }
 
 // ------------------ SESSIONE CHAT ------------------

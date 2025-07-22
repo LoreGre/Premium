@@ -12,7 +12,7 @@ export const logger = winston.createLogger({
     new winston.transports.MongoDB({
       db: process.env.MONGO_URI as string,
       dbName: process.env.MONGO_DB_NAME as string,
-      collection: 'Logs'
+      collection: 'logs'
     })
   ]
 })

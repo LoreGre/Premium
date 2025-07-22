@@ -8,6 +8,16 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { UIMessage } from './types' // 👈 usa UIMessage (tipizzato per il client)
 
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 px-2 py-1">
+      <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.2s]" />
+      <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0s]" />
+      <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0.2s]" />
+    </div>
+  )
+}
+
 export function ChatMessageItem({ message }: { message: UIMessage }) {
   const isUser = message.role === 'user'
 
@@ -81,7 +91,9 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
         )}
         title={message.createdAt ?? undefined}
       >
-        <p className="whitespace-pre-line">{message.content}</p>
+        <p className="whitespace-pre-line">
+          {message.isTyping ? <TypingDots /> : message.content}
+        </p>
 
         {formattedTime && (
           <p className="text-[10px] mt-1 text-right opacity-60">{formattedTime}</p>
@@ -148,7 +160,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
           </div>
         )}
 
-        {!isUser && (
+        {!isUser && !message.isTyping && (
           <div className="flex gap-2 mt-2 items-center">
             {!feedback ? (
               <>
