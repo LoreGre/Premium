@@ -57,9 +57,10 @@ export type ChatMessage = {
 }
 
 // ------------------ MESSAGGIO CHAT (UI) ------------------
-export type UIMessage = Omit<ChatMessage, 'session_id'> & {
+export type UIMessage = Omit<ChatMessage, 'session_id' | '_id'> & {
   session_id: string
   _ui_id: string
+  _id?: string // <-- solo string!
 }
 
 // ------------------ SESSIONE CHAT ------------------
@@ -74,4 +75,13 @@ export type ChatSession = {
 export type ChatContext = {
   messages: ChatMessage[]
   sessionId: string
+}
+
+// ------------------ RISPOSTA API CHAT (FRONTEND) ------------------
+export type ChatApiResponse = {
+  summary: string
+  recommended: { sku: string; reason: string }[]
+  products: ProductItem[]
+  intent?: string
+  _id?: string // <-- AGGIUNGI QUESTO!
 }

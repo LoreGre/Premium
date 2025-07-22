@@ -105,7 +105,8 @@ export async function POST(req: Request) {
       recommended: aiResponse.recommended,
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
-      entities: aiResponse.entities ?? []
+      entities: aiResponse.entities ?? [],
+      _id: aiMessageId?.toString() // <<--- AGGIUNGI QUI!
     })
   } catch (err) {
     logger.error('Errore in /api/chat', { error: (err as Error).message })

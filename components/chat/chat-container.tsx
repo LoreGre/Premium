@@ -6,13 +6,9 @@ import { createChatSession } from './chat-actions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'
-import type { ChatMessage } from './types'
+import type { UIMessage } from './types'
 
-// Tipo locale per il client
-export type UIMessage = Omit<ChatMessage, 'session_id'> & {
-  session_id: string
-  _ui_id: string
-}
+
 
 export function ChatContainer() {
   const [messages, setMessages] = useState<UIMessage[]>([])
@@ -88,7 +84,8 @@ export function ChatContainer() {
         products: res.products,
         intent: res.intent,
         recommended: res.recommended,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        _id: res._id // <-- AGGIUNGI QUESTO!
       }
 
       setMessages(prev =>

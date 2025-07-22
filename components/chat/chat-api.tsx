@@ -1,16 +1,9 @@
 import { createClient } from '@/lib/supabase/client'
-import type { ProductItem } from './types'
+import type { ChatApiResponse } from './types'
 
 type ChatApiRequest = {
   message: string
   sessionId: string
-}
-
-type ChatApiResponse = {
-  summary: string
-  recommended: { sku: string; reason: string }[]
-  products: ProductItem[]
-  intent?: string
 }
 
 export async function sendChatMessage(
@@ -65,6 +58,7 @@ export async function sendChatMessage(
     summary: data.summary,
     recommended: Array.isArray(data.recommended) ? data.recommended : [],
     products: Array.isArray(data.products) ? data.products : [],
-    intent: data.intent
+    intent: data.intent,
+    _id: data._id // <-- ora arriva dal backend
   }
 }
