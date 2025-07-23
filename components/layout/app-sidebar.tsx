@@ -32,8 +32,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+  
+    // 🔒 Elimina i cookie Supabase (client-side)
+    document.cookie = 'sb-access-token=; Max-Age=0; Path=/;'
+    document.cookie = 'sb-refresh-token=; Max-Age=0; Path=/;'
+  
     router.push("/login")
   }
+  
 
   const data = {
     navMain: [

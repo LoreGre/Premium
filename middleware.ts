@@ -11,7 +11,7 @@ export async function middleware(req: NextRequest) {
     {
       cookies: {
         getAll: () => req.cookies.getAll().map(({ name, value }) => ({ name, value })),
-        setAll: () => {} // ❌ NO-OP in middleware: non puoi modificare i cookie
+        setAll: () => {}     // ← NON scrive i cookie
       }
     }
   )
