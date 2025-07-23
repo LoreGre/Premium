@@ -1,4 +1,4 @@
-# Project Premium snapshot - Mer 23 Lug 2025 14:53:01 CEST
+# Project Premium snapshot - Mer 23 Lug 2025 15:02:51 CEST
 
 ## Directory tree
 
@@ -373,9 +373,9 @@ import { getMongoCollection } from '@/lib/mongo/client'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { ProductItem } from '@/components/chat/types'
 
 export async function GET(req: Request) {
-  // PROTEZIONE AUTH
   const auth = await requireAuthUser(req)
   if ('status' in auth) return auth
   const { user } = auth
@@ -383,63 +383,67 @@ export async function GET(req: Request) {
   try {
     logger.info('Inizio GET /api/chat-sessions', { userId: user.id })
 
-    // 1. Prendo tutte le sessioni chat da Mongo
+    // 1. Recupero tutte le sessioni chat
     const chatSessions = await getMongoCollection('chat_sessions')
-    const allSessions = await chatSessions.find({}).toArray()
+    const allSessions = await chatSessions
+      .find({})
+      .sort({ updatedAt: -1 }) // -1 = ordine decrescente
+      .toArray()
+
     logger.info('Sessioni chat caricate', { count: allSessions.length })
 
-    // 2. Estraggo tutti gli user_id unici
+    // 2. Prendo tutti gli user Supabase
     const userIds = [...new Set(allSessions.map(s => s.user_id))]
-    logger.info('UserId unici estratti', { userIds })
-
-    // 3. Prendo tutti gli utenti Supabase Auth (admin)
     const supabase = createAdminClient()
     const { data: usersList, error } = await supabase.auth.admin.listUsers()
-    logger.info('Risposta Supabase listUsers', { usersList, error })
 
-    if (error || !usersList || !Array.isArray(usersList.users)) {
-      logger.error('Errore fetch utenti supabase', { error: error || 'usersList missing or invalid' })
+    if (error || !usersList?.users) {
+      logger.error('Errore fetch utenti supabase', { error: error || 'usersList missing' })
       return NextResponse.json({ error: 'Errore utenti' }, { status: 500 })
     }
 
     const usersData = usersList.users.filter(u => userIds.includes(u.id))
-    logger.info('Utenti filtrati per sessioni', { utenti: usersData.map(u => ({ id: u.id, email: u.email })) })
 
-    // 4. Prendo la collezione dei messaggi
+    // 3. Recupero tutti i messaggi una volta sola
     const chatMessages = await getMongoCollection('chat_messages')
+    const allMessages = await chatMessages
+      .find({ session_id: { $in: allSessions.map(s => new ObjectId(s._id)) } })
+      .project({ session_id: 1, role: 1, content: 1, products: 1 })
+      .toArray()
 
-    // 5. Preparo la risposta finale
-    const sessionsWithDetails = await Promise.all(
-      allSessions.map(async session => {
-        const user = usersData.find(u => u.id === session.user_id)
+    // 4. Mappo la risposta
+    const sessionsWithDetails = allSessions.map(session => {
+      const sessionIdStr = session._id.toString()
+      const sessionMessages = allMessages.filter(msg =>
+        msg.session_id.toString() === sessionIdStr
+      )
 
-        const firstMsg = await chatMessages.findOne(
-          { session_id: new ObjectId(session._id), role: 'user' },
-          { sort: { createdAt: 1 }, projection: { content: 1 } }
-        )
+      const firstMsg = sessionMessages.find(m => m.role === 'user')
 
-        const products = await getProductsFromSession(session._id, chatMessages)
+      const allProducts: ProductItem[] = sessionMessages
+        .flatMap(msg => msg.products || [])
+        .filter(p => p?.sku)
 
-        logger.info('Analisi sessione', {
-          session_id: session._id.toString(),
-          user_id: session.user_id,
-          email: user?.email || '—',
-          hasFirstMsg: !!firstMsg,
-          productCount: products.length
-        })
+      const deduped = Object.values(
+        allProducts.reduce((acc, p) => {
+          acc[p.sku] = p
+          return acc
+        }, {} as Record<string, ProductItem>)
+      )
 
-        return {
-          _id: session._id.toString(),
-          user_id: session.user_id,
-          email: user?.email || '—',
-          updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
-          firstMessage: firstMsg?.content
-            ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
-            : '',
-          products
-        }
-      })
-    )
+      const userData = usersData.find(u => u.id === session.user_id)
+
+      return {
+        _id: sessionIdStr,
+        user_id: session.user_id,
+        email: userData?.email || '—',
+        updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
+        firstMessage: firstMsg?.content
+          ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
+          : '',
+        products: deduped.map(p => p.sku)
+      }
+    })
 
     logger.info('Risposta finale inviata', { count: sessionsWithDetails.length })
     return NextResponse.json(sessionsWithDetails)
@@ -448,29 +452,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Errore generico' }, { status: 500 })
   }
 }
-
-// ======================
-// Helper per prodotti
-// ======================
-
-async function getProductsFromSession(sessionId: ObjectId, chatMessages: Awaited<ReturnType<typeof getMongoCollection>>) {
-  const messages = await chatMessages
-    .find({ session_id: new ObjectId(sessionId), products: { $exists: true, $ne: [] } })
-    .project({ products: 1 })
-    .toArray()
-
-  const allProducts = messages.flatMap(msg => msg.products || [])
-
-  const deduped = Object.values(
-    allProducts.reduce((acc, p) => {
-      if (p?.sku) acc[p.sku] = p
-      return acc
-    }, {} as Record<string, any>)
-  )
-
-  return deduped.map(p => p.sku) // solo array di SKU
-}
-
 
 ---
 ### ./app/api/chat-sessions/[id]/route.ts
@@ -7506,9 +7487,16 @@ import { createBrowserClient } from '@supabase/ssr'
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,   // <--- IMPORTANTE
+        autoRefreshToken: false, // disattiva anche l'autorefresh del token
+      }
+    }
   )
 }
+
 ---
 ### ./lib/supabase/server.ts
 

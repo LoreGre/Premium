@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchChatSessions, deleteChatSession } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamic } from '@/components/table/data-table-dynamic'
@@ -23,6 +23,9 @@ const columnTypes = {
 
 export default function ChatSessionsPage() {
   const { success, error } = useNotify()
+  const errorRef = useRef(error)
+  errorRef.current = error
+
   const [sessions, setSessions] = useState<ChatSessionRow[]>([])
   const [loading, setLoading]   = useState(true)
 
@@ -34,7 +37,7 @@ export default function ChatSessionsPage() {
       .then(data => { if (!cancelled) setSessions(data) })
       .catch(e => {
         console.error('Errore fetchChatSessions:', e)
-        error('Errore', 'Impossibile caricare le sessioni chat')
+        errorRef.current('Errore', 'Impossibile caricare le sessioni chat')
       })
       .finally(() => { if (!cancelled) setLoading(false) })
   
