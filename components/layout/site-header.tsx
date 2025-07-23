@@ -12,6 +12,7 @@ function getTitleFromPath(path: string): string {
     "/offerte": "Offerte",
     "/clienti": "Clienti",
     "/fornitori": "Fornitori",
+    "/chat-sessions": "Sessioni",
   }
   return map[path] ?? "Area Riservata"
 }

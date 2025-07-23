@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
@@ -46,8 +47,8 @@ export async function GET(req: Request) {
 
         // Primo messaggio utente per la sessione
         const firstMsg = await chatMessages.findOne(
-          { session_id: session._id.toString(), role: 'user' },
-          { sort: { createdAt: 1 } }
+          { session_id: new ObjectId(session._id), role: 'user' },
+          { sort: { createdAt: 1 }, projection: { content: 1 } }
         )
 
         logger.info('Analisi sessione', {
@@ -61,9 +62,11 @@ export async function GET(req: Request) {
           _id: session._id.toString(),
           user_id: session.user_id,
           email: user?.email || '—',
-          updatedAt: session.updatedAt || '',
-          firstMessage: firstMsg?.content || ''
-        }
+          updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
+          firstMessage: firstMsg?.content
+            ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
+            : ''
+        }        
       })
     )
 

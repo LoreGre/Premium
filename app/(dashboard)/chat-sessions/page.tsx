@@ -16,8 +16,8 @@ export type ChatSessionRow = {
 
 const columnTypes = {
   email:        { type: 'email' as const },
-  updatedAt:    { type: 'string' as const },
-  firstMessage: { type: 'string' as const },
+  updatedAt:    { type: 'dateTime' as const, label: 'Data' },
+  firstMessage: { type: 'string' as const, label: 'Messaggio' },
 }
 
 export default function ChatSessionsPage() {
@@ -47,7 +47,7 @@ export default function ChatSessionsPage() {
       ) : (
         <DataTableDynamic<ChatSessionRow>
           data={sessions}
-          title="Sessioni Chat AI"
+          title="Sessioni"
           columnTypes={columnTypes}
           // onEdit riceve Row<ChatSessionRow>, devi usare .original
           onEdit={(row: Row<ChatSessionRow>) =>

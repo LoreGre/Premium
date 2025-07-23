@@ -69,6 +69,7 @@ export type ColumnType =
   | { type: 'email' }
   | { type: 'phone' }
   | { type: 'list'; flags?: string[] }
+  | { type: 'dateTime' } // 👈 aggiunto
 
 export interface DataTableDynamicProps<
   T extends Record<string, unknown> = GenericObject
@@ -141,7 +142,10 @@ export function DataTableDynamic<
 
     const dynamic = Object.entries(columnTypes).map(([key, cfg]) => ({
       accessorKey: key,
-      header: key.charAt(0).toUpperCase() + key.slice(1),
+      header: 'label' in cfg && typeof cfg.label === 'string'
+      ? cfg.label
+      : key.charAt(0).toUpperCase() + key.slice(1),
+      
       cell: ({ getValue }: { getValue: () => unknown }) => {
         const v = getValue() as string
 
@@ -158,6 +162,15 @@ export function DataTableDynamic<
               {v}
             </a>
           )
+        
+        if (cfg.type === 'dateTime') {
+          const date = new Date(v)
+          if (isNaN(date.getTime())) return '—'
+          return date.toLocaleString('it-IT', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+          })
+        }
 
         if (cfg.type === 'list')
           return (

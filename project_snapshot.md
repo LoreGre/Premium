@@ -1,4 +1,4 @@
-# Project Premium snapshot - Mer 23 Lug 2025 13:18:01 CEST
+# Project Premium snapshot - Mer 23 Lug 2025 13:57:32 CEST
 
 ## Directory tree
 
@@ -25,6 +25,8 @@
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
 │   │   ├── chat-sessions
+│   │   │   ├── [id]
+│   │   │   │   └── route.ts
 │   │   │   └── route.ts
 │   │   └── silan
 │   │       ├── qty
@@ -143,7 +145,7 @@
 ├── tsconfig.json
 └── update-env.sh
 
-33 directories, 107 files
+34 directories, 108 files
 
 ## File list & contents (.ts/.tsx only)
 
@@ -365,6 +367,7 @@ export async function POST(req: Request) {
 ---
 ### ./app/api/chat-sessions/route.ts
 
+import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
@@ -413,8 +416,8 @@ export async function GET(req: Request) {
 
         // Primo messaggio utente per la sessione
         const firstMsg = await chatMessages.findOne(
-          { session_id: session._id.toString(), role: 'user' },
-          { sort: { createdAt: 1 } }
+          { session_id: new ObjectId(session._id), role: 'user' },
+          { sort: { createdAt: 1 }, projection: { content: 1 } }
         )
 
         logger.info('Analisi sessione', {
@@ -428,9 +431,11 @@ export async function GET(req: Request) {
           _id: session._id.toString(),
           user_id: session.user_id,
           email: user?.email || '—',
-          updatedAt: session.updatedAt || '',
-          firstMessage: firstMsg?.content || ''
-        }
+          updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
+          firstMessage: firstMsg?.content
+            ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
+            : ''
+        }        
       })
     )
 
@@ -439,6 +444,50 @@ export async function GET(req: Request) {
   } catch (err) {
     logger.error('Errore API chat-sessions', { error: err })
     return NextResponse.json({ error: 'Errore generico' }, { status: 500 })
+  }
+}
+
+---
+### ./app/api/chat-sessions/[id]/route.ts
+
+import { NextResponse } from 'next/server'
+import { ObjectId } from 'mongodb'
+import { getMongoCollection } from '@/lib/mongo/client'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
+import { logger } from '@/lib/logger'
+
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  const auth = await requireAuthUser(req)
+  if ('status' in auth) return auth
+  const { user } = auth
+
+  try {
+    const sessionId = params.id
+    logger.info('Eliminazione sessione richiesta', { sessionId, userId: user.id })
+
+    const chatSessions = await getMongoCollection('chat_sessions')
+    const chatMessages = await getMongoCollection('chat_messages')
+
+    // 1. Elimino la sessione
+    const res = await chatSessions.deleteOne({ _id: new ObjectId(sessionId) })
+
+    if (res.deletedCount === 0) {
+      logger.warn('Sessione non trovata', { sessionId })
+      return NextResponse.json({ error: 'Sessione non trovata' }, { status: 404 })
+    }
+
+    // 2. Elimino i messaggi associati
+    const deleteMessages = await chatMessages.deleteMany({ session_id: sessionId })
+    logger.info('Messaggi eliminati per sessione', {
+      sessionId,
+      deletedMessages: deleteMessages.deletedCount
+    })
+
+    logger.info('Sessione eliminata con successo', { sessionId })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    logger.error('Errore eliminazione sessione', { error: err })
+    return NextResponse.json({ error: 'Errore server' }, { status: 500 })
   }
 }
 
@@ -978,8 +1027,8 @@ export type ChatSessionRow = {
 
 const columnTypes = {
   email:        { type: 'email' as const },
-  updatedAt:    { type: 'string' as const },
-  firstMessage: { type: 'string' as const },
+  updatedAt:    { type: 'dateTime' as const, label: 'Data' },
+  firstMessage: { type: 'string' as const, label: 'Messaggio' },
 }
 
 export default function ChatSessionsPage() {
@@ -1009,7 +1058,7 @@ export default function ChatSessionsPage() {
       ) : (
         <DataTableDynamic<ChatSessionRow>
           data={sessions}
-          title="Sessioni Chat AI"
+          title="Sessioni"
           columnTypes={columnTypes}
           // onEdit riceve Row<ChatSessionRow>, devi usare .original
           onEdit={(row: Row<ChatSessionRow>) =>
@@ -6510,6 +6559,7 @@ function getTitleFromPath(path: string): string {
     "/offerte": "Offerte",
     "/clienti": "Clienti",
     "/fornitori": "Fornitori",
+    "/chat-sessions": "Sessioni",
   }
   return map[path] ?? "Area Riservata"
 }
@@ -6570,6 +6620,7 @@ import {
   IconUsers,
   IconBuildingStore,
   IconLogout,
+  IconMessageDots
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -6596,7 +6647,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const data = {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
-      { title: "Sessioni", url: "/chat-sessions", icon: IconDashboard },
+      { title: "Sessioni", url: "/chat-sessions", icon: IconMessageDots },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },
@@ -6768,6 +6819,7 @@ export type ColumnType =
   | { type: 'email' }
   | { type: 'phone' }
   | { type: 'list'; flags?: string[] }
+  | { type: 'dateTime' } // 👈 aggiunto
 
 export interface DataTableDynamicProps<
   T extends Record<string, unknown> = GenericObject
@@ -6840,7 +6892,10 @@ export function DataTableDynamic<
 
     const dynamic = Object.entries(columnTypes).map(([key, cfg]) => ({
       accessorKey: key,
-      header: key.charAt(0).toUpperCase() + key.slice(1),
+      header: 'label' in cfg && typeof cfg.label === 'string'
+      ? cfg.label
+      : key.charAt(0).toUpperCase() + key.slice(1),
+      
       cell: ({ getValue }: { getValue: () => unknown }) => {
         const v = getValue() as string
 
@@ -6857,6 +6912,15 @@ export function DataTableDynamic<
               {v}
             </a>
           )
+        
+        if (cfg.type === 'dateTime') {
+          const date = new Date(v)
+          if (isNaN(date.getTime())) return '—'
+          return date.toLocaleString('it-IT', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+          })
+        }
 
         if (cfg.type === 'list')
           return (

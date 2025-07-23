@@ -11,6 +11,7 @@ import {
   IconUsers,
   IconBuildingStore,
   IconLogout,
+  IconMessageDots
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -37,7 +38,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const data = {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
-      { title: "Sessioni", url: "/chat-sessions", icon: IconDashboard },
+      { title: "Sessioni", url: "/chat-sessions", icon: IconMessageDots },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },
