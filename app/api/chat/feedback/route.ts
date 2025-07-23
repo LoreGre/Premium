@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { updateMessageFeedback } from '@/components/chat/chat-actions'
 import { logger } from '@/lib/logger'
 
@@ -7,24 +7,9 @@ const validRatings = ['positive', 'negative', 'neutral'] as const
 
 export async function POST(req: Request) {
   try {
-    const supabase = createAdminClient()
-    const authHeader = req.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-
-    if (!token) {
-      logger.warn('Token mancante nel feedback')
-      return NextResponse.json({ error: 'Token mancante' }, { status: 401 })
-    }
-
-    const {
-      data: { user },
-      error: authError
-    } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      logger.warn('Utente non autenticato per feedback', { authError })
-      return NextResponse.json({ error: 'Utente non autenticato' }, { status: 401 })
-    }
+    // Autenticazione unica via utility
+    const auth = await requireAuthUser(req)
+    if ('status' in auth) return auth
 
     const { messageId, rating, comment } = await req.json()
 

@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { getEmbedding } from '@/components/chat/chat-embedding'
 import {
   saveMessageMongo,
@@ -13,24 +13,10 @@ import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
   try {
-    const supabase = createAdminClient()
-    const authHeader = req.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-
-    if (!token) {
-      logger.warn('Token mancante')
-      return NextResponse.json({ error: 'Token mancante' }, { status: 401 })
-    }
-
-    const {
-      data: { user },
-      error: authError
-    } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      logger.warn('Utente non autenticato o errore auth', { authError })
-      return NextResponse.json({ error: 'Utente non autenticato' }, { status: 401 })
-    }
+    // AUTH PROTEZIONE
+    const auth = await requireAuthUser(req)
+    if ('status' in auth) return auth
+    const { user } = auth
 
     logger.info('Utente autenticato', { userId: user.id })
 
@@ -86,14 +72,13 @@ export async function POST(req: Request) {
     })
     logger.info('Messaggio AI salvato', { aiMessageId })
 
-
     return NextResponse.json({
       summary: aiResponse.summary,
       recommended: aiResponse.recommended,
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-      _id: aiMessageId?.toString() // <<--- AGGIUNGI QUI!
+      _id: aiMessageId?.toString()
     })
   } catch (err) {
     logger.error('Errore in /api/chat', { error: (err as Error).message })

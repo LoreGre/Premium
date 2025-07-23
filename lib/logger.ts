@@ -1,5 +1,4 @@
 import winston from 'winston'
-import 'winston-mongodb'
 
 export const logger = winston.createLogger({
   level: 'info',
@@ -7,12 +6,5 @@ export const logger = winston.createLogger({
     winston.format.timestamp(),
     winston.format.json()
   ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.MongoDB({
-      db: process.env.MONGO_URI as string,
-      dbName: process.env.MONGO_DB_NAME as string,
-      collection: 'logs'
-    })
-  ]
+  transports: [new winston.transports.Console()]
 })
