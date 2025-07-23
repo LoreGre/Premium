@@ -1,4 +1,4 @@
-# Project Premium snapshot - Mer 23 Lug 2025 13:57:32 CEST
+# Project Premium snapshot - Mer 23 Lug 2025 14:53:01 CEST
 
 ## Directory tree
 
@@ -411,20 +411,21 @@ export async function GET(req: Request) {
     // 5. Preparo la risposta finale
     const sessionsWithDetails = await Promise.all(
       allSessions.map(async session => {
-        // Email utente
         const user = usersData.find(u => u.id === session.user_id)
 
-        // Primo messaggio utente per la sessione
         const firstMsg = await chatMessages.findOne(
           { session_id: new ObjectId(session._id), role: 'user' },
           { sort: { createdAt: 1 }, projection: { content: 1 } }
         )
 
+        const products = await getProductsFromSession(session._id, chatMessages)
+
         logger.info('Analisi sessione', {
           session_id: session._id.toString(),
           user_id: session.user_id,
           email: user?.email || '—',
-          hasFirstMsg: !!firstMsg
+          hasFirstMsg: !!firstMsg,
+          productCount: products.length
         })
 
         return {
@@ -434,8 +435,9 @@ export async function GET(req: Request) {
           updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
           firstMessage: firstMsg?.content
             ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
-            : ''
-        }        
+            : '',
+          products
+        }
       })
     )
 
@@ -446,6 +448,29 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Errore generico' }, { status: 500 })
   }
 }
+
+// ======================
+// Helper per prodotti
+// ======================
+
+async function getProductsFromSession(sessionId: ObjectId, chatMessages: Awaited<ReturnType<typeof getMongoCollection>>) {
+  const messages = await chatMessages
+    .find({ session_id: new ObjectId(sessionId), products: { $exists: true, $ne: [] } })
+    .project({ products: 1 })
+    .toArray()
+
+  const allProducts = messages.flatMap(msg => msg.products || [])
+
+  const deduped = Object.values(
+    allProducts.reduce((acc, p) => {
+      if (p?.sku) acc[p.sku] = p
+      return acc
+    }, {} as Record<string, any>)
+  )
+
+  return deduped.map(p => p.sku) // solo array di SKU
+}
+
 
 ---
 ### ./app/api/chat-sessions/[id]/route.ts
@@ -463,27 +488,26 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
   try {
     const sessionId = params.id
+    const sessionObjectId = new ObjectId(sessionId)
+
     logger.info('Eliminazione sessione richiesta', { sessionId, userId: user.id })
 
     const chatSessions = await getMongoCollection('chat_sessions')
     const chatMessages = await getMongoCollection('chat_messages')
 
-    // 1. Elimino la sessione
-    const res = await chatSessions.deleteOne({ _id: new ObjectId(sessionId) })
+    const res = await chatSessions.deleteOne({ _id: sessionObjectId })
 
     if (res.deletedCount === 0) {
       logger.warn('Sessione non trovata', { sessionId })
       return NextResponse.json({ error: 'Sessione non trovata' }, { status: 404 })
     }
 
-    // 2. Elimino i messaggi associati
-    const deleteMessages = await chatMessages.deleteMany({ session_id: sessionId })
+    const deleteMessages = await chatMessages.deleteMany({ session_id: sessionObjectId })
     logger.info('Messaggi eliminati per sessione', {
       sessionId,
       deletedMessages: deleteMessages.deletedCount
     })
 
-    logger.info('Sessione eliminata con successo', { sessionId })
     return NextResponse.json({ success: true })
   } catch (err) {
     logger.error('Errore eliminazione sessione', { error: err })
@@ -1029,6 +1053,7 @@ const columnTypes = {
   email:        { type: 'email' as const },
   updatedAt:    { type: 'dateTime' as const, label: 'Data' },
   firstMessage: { type: 'string' as const, label: 'Messaggio' },
+  products:      { type: 'list' as const, label: 'Prodotti' },
 }
 
 export default function ChatSessionsPage() {

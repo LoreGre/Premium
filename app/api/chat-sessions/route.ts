@@ -42,20 +42,21 @@ export async function GET(req: Request) {
     // 5. Preparo la risposta finale
     const sessionsWithDetails = await Promise.all(
       allSessions.map(async session => {
-        // Email utente
         const user = usersData.find(u => u.id === session.user_id)
 
-        // Primo messaggio utente per la sessione
         const firstMsg = await chatMessages.findOne(
           { session_id: new ObjectId(session._id), role: 'user' },
           { sort: { createdAt: 1 }, projection: { content: 1 } }
         )
 
+        const products = await getProductsFromSession(session._id, chatMessages)
+
         logger.info('Analisi sessione', {
           session_id: session._id.toString(),
           user_id: session.user_id,
           email: user?.email || '—',
-          hasFirstMsg: !!firstMsg
+          hasFirstMsg: !!firstMsg,
+          productCount: products.length
         })
 
         return {
@@ -65,8 +66,9 @@ export async function GET(req: Request) {
           updatedAt: session.updatedAt || new Date(session.createdAt).toISOString(),
           firstMessage: firstMsg?.content
             ? firstMsg.content.slice(0, 60) + (firstMsg.content.length > 60 ? '…' : '')
-            : ''
-        }        
+            : '',
+          products
+        }
       })
     )
 
@@ -77,3 +79,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Errore generico' }, { status: 500 })
   }
 }
+
+// ======================
+// Helper per prodotti
+// ======================
+
+async function getProductsFromSession(sessionId: ObjectId, chatMessages: Awaited<ReturnType<typeof getMongoCollection>>) {
+  const messages = await chatMessages
+    .find({ session_id: new ObjectId(sessionId), products: { $exists: true, $ne: [] } })
+    .project({ products: 1 })
+    .toArray()
+
+  const allProducts = messages.flatMap(msg => msg.products || [])
+
+  const deduped = Object.values(
+    allProducts.reduce((acc, p) => {
+      if (p?.sku) acc[p.sku] = p
+      return acc
+    }, {} as Record<string, any>)
+  )
+
+  return deduped.map(p => p.sku) // solo array di SKU
+}
+

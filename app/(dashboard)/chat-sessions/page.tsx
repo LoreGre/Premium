@@ -18,6 +18,7 @@ const columnTypes = {
   email:        { type: 'email' as const },
   updatedAt:    { type: 'dateTime' as const, label: 'Data' },
   firstMessage: { type: 'string' as const, label: 'Messaggio' },
+  products:      { type: 'list' as const, label: 'Prodotti' },
 }
 
 export default function ChatSessionsPage() {
