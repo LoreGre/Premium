@@ -1,17 +1,19 @@
-# Project Premium snapshot - Mer 23 Lug 2025 15:59:19 CEST
+# Project Premium snapshot - Mer 23 Lug 2025 18:31:29 CEST
 
 ## Directory tree
 
 .
 ├── app
 │   ├── (dashboard)
-│   │   ├── chat-sessions
+│   │   ├── chats
 │   │   │   ├── actions.ts
 │   │   │   └── page.tsx
 │   │   ├── clienti
 │   │   │   ├── actions.ts
 │   │   │   └── page.tsx
 │   │   ├── dashboard
+│   │   │   ├── [id]
+│   │   │   │   └── page.tsx
 │   │   │   └── page.tsx
 │   │   ├── fornitori
 │   │   │   ├── actions.ts
@@ -24,7 +26,7 @@
 │   │   │   ├── feedback
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
-│   │   ├── chat-sessions
+│   │   ├── chats
 │   │   │   ├── [id]
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
@@ -145,7 +147,7 @@
 ├── tsconfig.json
 └── update-env.sh
 
-34 directories, 108 files
+35 directories, 109 files
 
 ## File list & contents (.ts/.tsx only)
 
@@ -365,7 +367,7 @@ export async function POST(req: Request) {
 }
 
 ---
-### ./app/api/chat-sessions/route.ts
+### ./app/api/chats/route.ts
 
 import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
@@ -454,7 +456,7 @@ export async function GET(req: Request) {
 }
 
 ---
-### ./app/api/chat-sessions/[id]/route.ts
+### ./app/api/chats/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getMongoCollection } from '@/lib/mongo/client'
@@ -960,129 +962,6 @@ export default function CustomersPage() {
 }
 
 ---
-### ./app/(dashboard)/chat-sessions/actions.ts
-
-import { createClient } from '@/lib/supabase/client'
-import type { ChatSessionRow } from './page'
-
-const supabase = createClient()
-
-export async function fetchChatSessions(): Promise<ChatSessionRow[]> {
-  const { data, error: sessionError } = await supabase.auth.getSession()
-
-  if (sessionError) throw new Error(sessionError.message)
-  if (!data.session) throw new Error('Sessione non trovata')
-
-  const token = data.session.access_token
-
-  const res = await fetch('/api/chat-sessions', {
-    cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  })
-
-  if (!res.ok) throw new Error('Errore caricamento sessioni')
-  return res.json()
-}
-
-export async function deleteChatSession(id: string): Promise<void> {
-  const { data, error: sessionError } = await supabase.auth.getSession()
-
-  if (sessionError) throw new Error(sessionError.message)
-  if (!data.session) throw new Error('Sessione non trovata')
-
-  const token = data.session.access_token
-
-  const res = await fetch(`/api/chat-sessions/${id}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  })
-
-  if (!res.ok) throw new Error('Errore eliminazione sessione')
-}
-
----
-### ./app/(dashboard)/chat-sessions/page.tsx
-
-'use client'
-
-import { useEffect, useRef, useState } from 'react'
-import { fetchChatSessions, deleteChatSession } from './actions'
-import { useNotify } from '@/hooks/use-notify'
-import { DataTableDynamic } from '@/components/table/data-table-dynamic'
-import type { Row } from '@tanstack/react-table'
-
-export type ChatSessionRow = {
-  _id: string
-  user_id: string
-  email: string
-  updatedAt: string
-  firstMessage: string
-}
-
-const columnTypes = {
-  email:        { type: 'email' as const },
-  updatedAt:    { type: 'dateTime' as const, label: 'Data' },
-  firstMessage: { type: 'string' as const, label: 'Messaggio' },
-  products:      { type: 'list' as const, label: 'Prodotti' },
-}
-
-export default function ChatSessionsPage() {
-  const { success, error } = useNotify()
-  const errorRef = useRef(error)
-  errorRef.current = error
-
-  const [sessions, setSessions] = useState<ChatSessionRow[]>([])
-  const [loading, setLoading]   = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-  
-    fetchChatSessions()
-      .then(data => { if (!cancelled) setSessions(data) })
-      .catch(e => {
-        console.error('Errore fetchChatSessions:', e)
-        errorRef.current('Errore', 'Impossibile caricare le sessioni chat')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-  
-    return () => { cancelled = true }
-  }, []) // solo array vuoto!  
-
-  return (
-    <main className="p-2">
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Caricamento in corso...</p>
-      ) : (
-        <DataTableDynamic<ChatSessionRow>
-          data={sessions}
-          title="Sessioni"
-          columnTypes={columnTypes}
-          // onEdit riceve Row<ChatSessionRow>, devi usare .original
-          onEdit={(row: Row<ChatSessionRow>) =>
-            window.location.assign(`/dashboard/chat/${row.original._id}`)
-          }
-          // onDelete riceve array di oggetti puri
-          onDelete={async (rows: ChatSessionRow[]) => {
-            try {
-              await Promise.all(rows.map((row) => deleteChatSession(row._id)))
-              setSessions(await fetchChatSessions())
-              success('Sessione eliminata', 'Sessione rimossa')
-            } catch (e) {
-              console.error('Errore fetchChatSessions:', e)
-              error('Errore', 'Impossibile eliminare una o più sessioni')
-            }
-          }}
-        />
-      )}
-    </main>
-  )
-}
----
 ### ./app/(dashboard)/fornitori/actions.ts
 
 'use client'
@@ -1377,6 +1256,34 @@ export default function SuppliersPage() {
 }
 
 ---
+### ./app/(dashboard)/dashboard/[id]/page.tsx
+
+// app/(dashboard)/dashboard/[id]/page.tsx
+
+'use client'
+
+import { useParams } from 'next/navigation'
+import { ChatContainer } from '@/components/chat/chat-container'
+
+export default function ChatPage() {
+  const { id } = useParams()
+
+  if (!id || typeof id !== 'string') {
+    return (
+      <div className="p-4 text-center text-sm text-red-500">
+        ⚠️ ID sessione mancante o non valido.
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative h-full flex flex-col">
+      <ChatContainer sessionId={id} />
+    </div>
+  )
+}
+
+---
 ### ./app/(dashboard)/dashboard/page.tsx
 
 'use client'
@@ -1443,6 +1350,130 @@ export default async function Layout({ children }: { children: React.ReactNode }
 }
 
 
+---
+### ./app/(dashboard)/chats/actions.ts
+
+import { createClient } from '@/lib/supabase/client'
+import type { ChatSessionRow } from './page'
+
+const supabase = createClient()
+
+export async function fetchChatSessions(): Promise<ChatSessionRow[]> {
+  const { data, error: sessionError } = await supabase.auth.getSession()
+
+  if (sessionError) throw new Error(sessionError.message)
+  if (!data.session) throw new Error('Sessione non trovata')
+
+  const token = data.session.access_token
+
+  const res = await fetch('/api/chats', {
+    cache: 'no-store',
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  })
+
+  if (!res.ok) throw new Error('Errore caricamento sessioni')
+  return res.json()
+}
+
+export async function deleteChatSession(id: string): Promise<void> {
+  const { data, error: sessionError } = await supabase.auth.getSession()
+
+  if (sessionError) throw new Error(sessionError.message)
+  if (!data.session) throw new Error('Sessione non trovata')
+
+  const token = data.session.access_token
+
+  const res = await fetch(`/api/chats/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  })
+
+  if (!res.ok) throw new Error('Errore eliminazione sessione')
+}
+
+---
+### ./app/(dashboard)/chats/page.tsx
+
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { fetchChatSessions, deleteChatSession } from './actions'
+import { useNotify } from '@/hooks/use-notify'
+import { DataTableDynamic } from '@/components/table/data-table-dynamic'
+import type { Row } from '@tanstack/react-table'
+
+export type ChatSessionRow = {
+  _id: string
+  user_id: string
+  email: string
+  updatedAt: string
+  firstMessage: string
+}
+
+const columnTypes = {
+  email:        { type: 'email' as const, label: 'Utente' },
+  updatedAt:    { type: 'dateTime' as const, label: 'Data' },
+  firstMessage: { type: 'string' as const, label: 'Messaggio' },
+  products:      { type: 'list' as const, label: 'Prodotti' },
+}
+
+export default function ChatSessionsPage() {
+  const { success, error } = useNotify()
+  const errorRef = useRef(error)
+  errorRef.current = error
+
+  const [sessions, setSessions] = useState<ChatSessionRow[]>([])
+  const [loading, setLoading]   = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+  
+    fetchChatSessions()
+      .then(data => { if (!cancelled) setSessions(data) })
+      .catch(e => {
+        console.error('Errore fetchChatSessions:', e)
+        errorRef.current('Errore', 'Impossibile caricare le sessioni chat')
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+  
+    return () => { cancelled = true }
+  }, []) // solo array vuoto!  
+
+  return (
+    <main className="p-2">
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Caricamento in corso...</p>
+      ) : (
+        <DataTableDynamic<ChatSessionRow>
+          data={sessions}
+          title="Chats"
+          columnTypes={columnTypes}
+          onAdd={() => window.location.assign('/dashboard')} // 👈 AGGIUNTO
+          // onEdit riceve Row<ChatSessionRow>, devi usare .original
+          onEdit={(row: Row<ChatSessionRow>) =>
+            window.location.assign(`/dashboard/${row.original._id}`)
+          }
+          // onDelete riceve array di oggetti puri
+          onDelete={async (rows: ChatSessionRow[]) => {
+            try {
+              await Promise.all(rows.map((row) => deleteChatSession(row._id)))
+              setSessions(await fetchChatSessions())
+              success('Sessione eliminata', 'Sessione rimossa')
+            } catch (e) {
+              console.error('Errore fetchChatSessions:', e)
+              error('Errore', 'Impossibile eliminare una o più sessioni')
+            }
+          }}
+        />
+      )}
+    </main>
+  )
+}
 ---
 ### ./app/(dashboard)/offerte/page.tsx
 
@@ -2389,13 +2420,13 @@ type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${s
 type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
 
 ---
-### ./.next/types/app/api/chat-sessions/route.ts
+### ./.next/types/app/api/chats/route.ts
 
-// File: /Users/lorenzo/WebApp/premium/app/api/chat-sessions/route.ts
-import * as entry from '../../../../../app/api/chat-sessions/route.js'
+// File: /Users/lorenzo/WebApp/premium/app/api/chats/route.ts
+import * as entry from '../../../../../app/api/chats/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../app/api/chat-sessions/route.js')
+type TEntry = typeof import('../../../../../app/api/chats/route.js')
 
 type SegmentParams<T extends Object = any> = T extends Record<string, any>
   ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
@@ -2740,13 +2771,13 @@ type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${s
 type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
 
 ---
-### ./.next/types/app/api/chat-sessions/[id]/route.ts
+### ./.next/types/app/api/chats/[id]/route.ts
 
-// File: /Users/lorenzo/WebApp/premium/app/api/chat-sessions/[id]/route.ts
-import * as entry from '../../../../../../app/api/chat-sessions/[id]/route.js'
+// File: /Users/lorenzo/WebApp/premium/app/api/chats/[id]/route.ts
+import * as entry from '../../../../../../app/api/chats/[id]/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../../app/api/chat-sessions/[id]/route.js')
+type TEntry = typeof import('../../../../../../app/api/chats/[id]/route.js')
 
 type SegmentParams<T extends Object = any> = T extends Record<string, any>
   ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
@@ -3881,94 +3912,6 @@ type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${s
 type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
 
 ---
-### ./.next/types/app/(dashboard)/chat-sessions/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/chat-sessions/page.tsx
-import * as entry from '../../../../../app/(dashboard)/chat-sessions/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/chat-sessions/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
 ### ./.next/types/app/(dashboard)/fornitori/page.ts
 
 // File: /Users/lorenzo/WebApp/premium/app/(dashboard)/fornitori/page.tsx
@@ -4064,6 +4007,182 @@ import * as entry from '../../../../../app/(dashboard)/dashboard/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
 type TEntry = typeof import('../../../../../app/(dashboard)/dashboard/page.js')
+
+type SegmentParams<T extends Object = any> = T extends Record<string, any>
+  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
+  : T
+
+// Check that the entry is a valid entry
+checkFields<Diff<{
+  default: Function
+  config?: {}
+  generateStaticParams?: Function
+  revalidate?: RevalidateRange<TEntry> | false
+  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
+  dynamicParams?: boolean
+  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
+  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
+  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
+  maxDuration?: number
+  
+  metadata?: any
+  generateMetadata?: Function
+  viewport?: any
+  generateViewport?: Function
+  experimental_ppr?: boolean
+  
+}, TEntry, ''>>()
+
+
+// Check the prop type of the entry function
+checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
+
+// Check the arguments and return type of the generateMetadata function
+if ('generateMetadata' in entry) {
+  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
+  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
+}
+
+// Check the arguments and return type of the generateViewport function
+if ('generateViewport' in entry) {
+  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
+  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
+}
+
+// Check the arguments and return type of the generateStaticParams function
+if ('generateStaticParams' in entry) {
+  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
+  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
+}
+
+export interface PageProps {
+  params?: Promise<SegmentParams>
+  searchParams?: Promise<any>
+}
+export interface LayoutProps {
+  children?: React.ReactNode
+
+  params?: Promise<SegmentParams>
+}
+
+// =============
+// Utility types
+type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
+
+// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
+type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
+type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
+
+type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
+type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
+type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
+
+
+
+function checkFields<_ extends { [k in keyof any]: never }>() {}
+
+// https://github.com/sindresorhus/type-fest
+type Numeric = number | bigint
+type Zero = 0 | 0n
+type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
+type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
+
+---
+### ./.next/types/app/(dashboard)/dashboard/[id]/page.ts
+
+// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/dashboard/[id]/page.tsx
+import * as entry from '../../../../../../app/(dashboard)/dashboard/[id]/page.js'
+import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
+
+type TEntry = typeof import('../../../../../../app/(dashboard)/dashboard/[id]/page.js')
+
+type SegmentParams<T extends Object = any> = T extends Record<string, any>
+  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
+  : T
+
+// Check that the entry is a valid entry
+checkFields<Diff<{
+  default: Function
+  config?: {}
+  generateStaticParams?: Function
+  revalidate?: RevalidateRange<TEntry> | false
+  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
+  dynamicParams?: boolean
+  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
+  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
+  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
+  maxDuration?: number
+  
+  metadata?: any
+  generateMetadata?: Function
+  viewport?: any
+  generateViewport?: Function
+  experimental_ppr?: boolean
+  
+}, TEntry, ''>>()
+
+
+// Check the prop type of the entry function
+checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
+
+// Check the arguments and return type of the generateMetadata function
+if ('generateMetadata' in entry) {
+  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
+  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
+}
+
+// Check the arguments and return type of the generateViewport function
+if ('generateViewport' in entry) {
+  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
+  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
+}
+
+// Check the arguments and return type of the generateStaticParams function
+if ('generateStaticParams' in entry) {
+  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
+  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
+}
+
+export interface PageProps {
+  params?: Promise<SegmentParams>
+  searchParams?: Promise<any>
+}
+export interface LayoutProps {
+  children?: React.ReactNode
+
+  params?: Promise<SegmentParams>
+}
+
+// =============
+// Utility types
+type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
+
+// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
+type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
+type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
+
+type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
+type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
+type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
+
+
+
+function checkFields<_ extends { [k in keyof any]: never }>() {}
+
+// https://github.com/sindresorhus/type-fest
+type Numeric = number | bigint
+type Zero = 0 | 0n
+type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
+type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
+
+---
+### ./.next/types/app/(dashboard)/chats/page.ts
+
+// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/chats/page.tsx
+import * as entry from '../../../../../app/(dashboard)/chats/page.js'
+import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
+
+type TEntry = typeof import('../../../../../app/(dashboard)/chats/page.js')
 
 type SegmentParams<T extends Object = any> = T extends Record<string, any>
   ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
@@ -8391,16 +8510,20 @@ export function FormDynamic({
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createChatSession } from './chat-actions'
+import { createChatSession, getSessionHistoryMongo } from './chat-actions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'
 import type { UIMessage } from './types'
 
-export function ChatContainer() {
+type ChatContainerProps = {
+  sessionId?: string
+}
+
+export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProps) {
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [authError, setAuthError] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -8410,14 +8533,45 @@ export function ChatContainer() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // -- RIMOSSO: useEffect che crea la sessione appena si entra --
+  // Caricamento messaggi se sessionId è fornito da props
+  const [invalidSession, setInvalidSession] = useState(false)
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!initialSessionId) return
+      try {
+        const rawMessages = await getSessionHistoryMongo(initialSessionId)
+  
+        if (!rawMessages || rawMessages.length === 0) {
+          setInvalidSession(true)
+          return
+        }
+  
+        const uiMessages: UIMessage[] = rawMessages.map((msg) => ({
+          ...msg,
+          session_id: msg.session_id.toString(),
+          _id: msg._id.toString(),
+          _ui_id: `from-db-${msg._id.toString()}`,
+        }))
+  
+        setMessages(uiMessages)
+      } catch (err) {
+        console.error('Errore nel caricamento dei messaggi:', err)
+        setInvalidSession(true)
+      }
+    }
+  
+    loadMessages()
+  }, [initialSessionId])
+  
+  
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return
 
     let currentSessionId = sessionId
 
-    // Crea sessione SOLO al primo messaggio!
+    // Crea sessione SOLO al primo messaggio, se non esiste
     if (!currentSessionId) {
       const supabase = createClient()
       const { data, error } = await supabase.auth.getUser()
@@ -8448,9 +8602,9 @@ export function ChatContainer() {
       session_id: currentSessionId,
       user_id: 'assistant',
       role: 'assistant',
-      content: '', // vuoto!
+      content: '',
       createdAt: timestamp,
-      isTyping: true // nuovo!
+      isTyping: true
     }
 
     setMessages(prev => [...prev, userMessage, loadingMessage])
@@ -8501,6 +8655,12 @@ export function ChatContainer() {
         <div className="max-w-3xl mx-auto w-full px-6 pt-6 pb-40">
           {authError && (
             <div className="text-red-500 text-center">{authError}</div>
+          )}
+
+          {invalidSession && (
+            <div className="text-red-500 text-center py-4">
+              ⚠️ La sessione specificata non esiste o è stata eliminata.
+            </div>
           )}
 
           {messages.map(msg => (
@@ -9516,7 +9676,7 @@ function getTitleFromPath(path: string): string {
     "/offerte": "Offerte",
     "/clienti": "Clienti",
     "/fornitori": "Fornitori",
-    "/chat-sessions": "Sessioni",
+    "/chats": "Chats",
   }
   return map[path] ?? "Area Riservata"
 }
@@ -9610,7 +9770,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const data = {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
-      { title: "Sessioni", url: "/chat-sessions", icon: IconMessageDots },
+      { title: "Chats", url: "/chats", icon: IconMessageDots },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },

@@ -2,16 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createChatSession } from './chat-actions'
+import { createChatSession, getSessionHistoryMongo } from './chat-actions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'
 import type { UIMessage } from './types'
 
-export function ChatContainer() {
+type ChatContainerProps = {
+  sessionId?: string
+}
+
+export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProps) {
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [authError, setAuthError] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -21,14 +25,45 @@ export function ChatContainer() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // -- RIMOSSO: useEffect che crea la sessione appena si entra --
+  // Caricamento messaggi se sessionId è fornito da props
+  const [invalidSession, setInvalidSession] = useState(false)
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!initialSessionId) return
+      try {
+        const rawMessages = await getSessionHistoryMongo(initialSessionId)
+  
+        if (!rawMessages || rawMessages.length === 0) {
+          setInvalidSession(true)
+          return
+        }
+  
+        const uiMessages: UIMessage[] = rawMessages.map((msg) => ({
+          ...msg,
+          session_id: msg.session_id.toString(),
+          _id: msg._id.toString(),
+          _ui_id: `from-db-${msg._id.toString()}`,
+        }))
+  
+        setMessages(uiMessages)
+      } catch (err) {
+        console.error('Errore nel caricamento dei messaggi:', err)
+        setInvalidSession(true)
+      }
+    }
+  
+    loadMessages()
+  }, [initialSessionId])
+  
+  
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return
 
     let currentSessionId = sessionId
 
-    // Crea sessione SOLO al primo messaggio!
+    // Crea sessione SOLO al primo messaggio, se non esiste
     if (!currentSessionId) {
       const supabase = createClient()
       const { data, error } = await supabase.auth.getUser()
@@ -59,9 +94,9 @@ export function ChatContainer() {
       session_id: currentSessionId,
       user_id: 'assistant',
       role: 'assistant',
-      content: '', // vuoto!
+      content: '',
       createdAt: timestamp,
-      isTyping: true // nuovo!
+      isTyping: true
     }
 
     setMessages(prev => [...prev, userMessage, loadingMessage])
@@ -112,6 +147,12 @@ export function ChatContainer() {
         <div className="max-w-3xl mx-auto w-full px-6 pt-6 pb-40">
           {authError && (
             <div className="text-red-500 text-center">{authError}</div>
+          )}
+
+          {invalidSession && (
+            <div className="text-red-500 text-center py-4">
+              ⚠️ La sessione specificata non esiste o è stata eliminata.
+            </div>
           )}
 
           {messages.map(msg => (

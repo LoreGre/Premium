@@ -15,7 +15,7 @@ export type ChatSessionRow = {
 }
 
 const columnTypes = {
-  email:        { type: 'email' as const },
+  email:        { type: 'email' as const, label: 'Utente' },
   updatedAt:    { type: 'dateTime' as const, label: 'Data' },
   firstMessage: { type: 'string' as const, label: 'Messaggio' },
   products:      { type: 'list' as const, label: 'Prodotti' },
@@ -51,11 +51,12 @@ export default function ChatSessionsPage() {
       ) : (
         <DataTableDynamic<ChatSessionRow>
           data={sessions}
-          title="Sessioni"
+          title="Chats"
           columnTypes={columnTypes}
+          onAdd={() => window.location.assign('/dashboard')} // 👈 AGGIUNTO
           // onEdit riceve Row<ChatSessionRow>, devi usare .original
           onEdit={(row: Row<ChatSessionRow>) =>
-            window.location.assign(`/dashboard/chat/${row.original._id}`)
+            window.location.assign(`/dashboard/${row.original._id}`)
           }
           // onDelete riceve array di oggetti puri
           onDelete={async (rows: ChatSessionRow[]) => {

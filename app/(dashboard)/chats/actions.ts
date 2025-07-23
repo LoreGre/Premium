@@ -11,7 +11,7 @@ export async function fetchChatSessions(): Promise<ChatSessionRow[]> {
 
   const token = data.session.access_token
 
-  const res = await fetch('/api/chat-sessions', {
+  const res = await fetch('/api/chats', {
     cache: 'no-store',
     headers: {
       Authorization: `Bearer ${token}`
@@ -30,7 +30,7 @@ export async function deleteChatSession(id: string): Promise<void> {
 
   const token = data.session.access_token
 
-  const res = await fetch(`/api/chat-sessions/${id}`, {
+  const res = await fetch(`/api/chats/${id}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`
