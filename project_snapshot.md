@@ -1,4 +1,4 @@
-# Project Premium snapshot - Gio 24 Lug 2025 15:31:05 CEST
+# Project Premium snapshot - Gio 24 Lug 2025 16:27:21 CEST
 
 ## Directory tree
 
@@ -1143,12 +1143,13 @@ export async function deleteProducts(skus: string[]): Promise<void> {
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useDebounce } from 'use-debounce'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
-import { ViewDynamic, ViewField } from '@/components/view/view-dynamic' // ✅ nuovo import
+import { ViewDynamic, ViewField } from '@/components/view/view-dynamic'
 import { openViewDrawer } from '@/lib/utils/view'
 import type { ColumnDefinition } from '@/components/table/data-table-dynamic-server'
 
@@ -1166,12 +1167,12 @@ export type ProductItem = {
 const columnTypes: Record<keyof ProductItem, ColumnDefinition<ProductItem>> = {
   sku:           { type: 'string' },
   name:          { type: 'string', label: 'Nome' },
-  unit_price:         { type: 'number', label: 'Prezzo' },
+  unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:      { type: 'string', label: 'Fornitore' },
-  category_name: { type: 'string', flags: ['filter'], label: 'Categoria' },
+  source:        { type: 'string', label: 'Fornitore' },
+  category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
-  colore:        { type: 'string', flags: ['filter'] },
+  colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
 }
 
 const fetchFilters = async (): Promise<Record<string, string[]>> => {
@@ -1199,6 +1200,7 @@ export default function ProdottiPage() {
   const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState<Record<string, string[]>>({})
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebounce(search, 500)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -1219,18 +1221,22 @@ export default function ProdottiPage() {
       })
   }, [])
 
-  const fetchData = async () => {
+  const fetchData = async ({
+    search = debouncedSearch,
+    filters = activeFilters,
+    page = pageIndex,
+    size = pageSize
+  } = {}) => {
     try {
       setLoading(true)
-      const prodottiRes = await fetchProducts({
+      const res = await fetchProducts({
         search,
-        limit: pageSize,
-        offset: pageIndex * pageSize,
-        filters: activeFilters,
+        filters,
+        limit: size,
+        offset: page * size
       })
-
-      setProducts(prodottiRes.data)
-      setTotal(prodottiRes.total)
+      setProducts(res.data)
+      setTotal(res.total)
     } catch (e) {
       console.error('Errore fetch prodotti:', e)
       errorRef.current?.('Errore', 'Impossibile caricare i prodotti')
@@ -1241,7 +1247,7 @@ export default function ProdottiPage() {
 
   useEffect(() => {
     fetchData()
-  }, [search, pageSize, pageIndex, activeFilters])
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
 
   const viewFields: ViewField[] = [
     { name: 'sku', label: 'SKU', type: 'text' },
@@ -1267,7 +1273,10 @@ export default function ProdottiPage() {
           data={products}
           total={total}
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={(val) => {
+            setSearch(val)
+            setPageIndex(0)
+          }}
           pageIndex={pageIndex}
           pageSize={pageSize}
           onPageChange={setPageIndex}
@@ -1284,10 +1293,10 @@ export default function ProdottiPage() {
           columnTypes={columnTypes}
           onView={(row) =>
             openViewDrawer(setViewer, {
-              title: `Visualizza Prodotto: ${row.original.name}`,
+              title: `${row.original.name}`,
               data: row.original
             })
-          }          
+          }
           onDelete={async (items) => {
             try {
               const skus = items.map((item) => item.sku)
@@ -5299,7 +5308,7 @@ export { Skeleton }
 
 import { getMongoCollection } from '@/lib/mongo/client'
 import type { ProductItem } from '@/app/(dashboard)/prodotti/page'
-import { Document, WithId } from 'mongodb'
+import { Document } from 'mongodb'
 
 export type SearchProductsParams = {
   search?: string
@@ -5349,11 +5358,10 @@ export async function searchProductsPaginated({
     if (hasFilters) pipeline.push({ $match: filterConditions })
   }
 
-  pipeline.push({ $sort: { [sortBy]: sortDir === 'desc' ? -1 : 1 } })
-
   pipeline.push({
     $facet: {
       data: [
+        { $sort: { [sortBy]: sortDir === 'desc' ? -1 : 1 } },
         { $skip: offset },
         { $limit: limit },
         {
@@ -5375,7 +5383,7 @@ export async function searchProductsPaginated({
     }
   })
 
-  const results = await prodotti.aggregate(pipeline).toArray()
+  const results = await prodotti.aggregate(pipeline, { allowDiskUse: true }).toArray()
   const response = results[0] || {}
 
   return {
@@ -7935,18 +7943,7 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   const [itemsToDelete, setItemsToDelete] = React.useState<T[]>([])
   const [dialogOpen, setDialogOpen] = React.useState(false)
 
-  const toggleFilter = (key: string, value: string) => {
-    const current = activeFilters[key] || []
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value]
 
-    onFilterChange({
-      ...activeFilters,
-      [key]: updated,
-    })
-    onPageChange(0)
-  }
 
   const columns = React.useMemo<ColumnDef<T>[]>(() => {
     const dynamic = Object.entries(columnTypes).map(([key, def]) => ({
@@ -8121,17 +8118,17 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
                 })}
 
                 <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-muted-foreground"
-                    disabled={Object.values(activeFilters).every((arr) => !arr?.length)}
-                    onClick={() => {
+                variant="outline"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={Object.values(activeFilters).every((arr) => !arr?.length) && !search}
+                onClick={() => {
                     onFilterChange({})
                     onPageChange(0)
-                    }}
+                  }}                                   
                 >
-                    <IconRefresh className="mr-2 size-4" />
-                    Azzera Filtri
+                <IconRefresh className="mr-2 size-4" />
+                Azzera Filtri
                 </Button>
                 </div>
 
@@ -8390,17 +8387,17 @@ export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, va
                     <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
                       {value}
                     </a>
-                  ) : field.type === 'list' && Array.isArray(value) ? (
+                  ) : field.type === 'list' ? (
                     <div className="flex flex-wrap gap-1">
-                      {value.map((item: any, i: number) => (
+                      {(Array.isArray(value) ? value : String(value).split(',')).map((item: any, i: number) => (
                         <span
                           key={i}
                           className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                         >
-                          {item}
+                          {item.trim()}
                         </span>
                       ))}
-                    </div>
+                    </div>                  
                   ) : field.type === 'date' ? (
                     <div className="text-sm">
                       {new Date(value).toLocaleDateString('it-IT', {

@@ -119,18 +119,7 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   const [itemsToDelete, setItemsToDelete] = React.useState<T[]>([])
   const [dialogOpen, setDialogOpen] = React.useState(false)
 
-  const toggleFilter = (key: string, value: string) => {
-    const current = activeFilters[key] || []
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value]
 
-    onFilterChange({
-      ...activeFilters,
-      [key]: updated,
-    })
-    onPageChange(0)
-  }
 
   const columns = React.useMemo<ColumnDef<T>[]>(() => {
     const dynamic = Object.entries(columnTypes).map(([key, def]) => ({
@@ -305,17 +294,17 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
                 })}
 
                 <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-muted-foreground"
-                    disabled={Object.values(activeFilters).every((arr) => !arr?.length)}
-                    onClick={() => {
+                variant="outline"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={Object.values(activeFilters).every((arr) => !arr?.length) && !search}
+                onClick={() => {
                     onFilterChange({})
                     onPageChange(0)
-                    }}
+                  }}                                   
                 >
-                    <IconRefresh className="mr-2 size-4" />
-                    Azzera Filtri
+                <IconRefresh className="mr-2 size-4" />
+                Azzera Filtri
                 </Button>
                 </div>
 

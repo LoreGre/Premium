@@ -1,6 +1,6 @@
 import { getMongoCollection } from '@/lib/mongo/client'
 import type { ProductItem } from '@/app/(dashboard)/prodotti/page'
-import { Document, WithId } from 'mongodb'
+import { Document } from 'mongodb'
 
 export type SearchProductsParams = {
   search?: string
@@ -50,11 +50,10 @@ export async function searchProductsPaginated({
     if (hasFilters) pipeline.push({ $match: filterConditions })
   }
 
-  pipeline.push({ $sort: { [sortBy]: sortDir === 'desc' ? -1 : 1 } })
-
   pipeline.push({
     $facet: {
       data: [
+        { $sort: { [sortBy]: sortDir === 'desc' ? -1 : 1 } },
         { $skip: offset },
         { $limit: limit },
         {
@@ -76,7 +75,7 @@ export async function searchProductsPaginated({
     }
   })
 
-  const results = await prodotti.aggregate(pipeline).toArray()
+  const results = await prodotti.aggregate(pipeline, { allowDiskUse: true }).toArray()
   const response = results[0] || {}
 
   return {

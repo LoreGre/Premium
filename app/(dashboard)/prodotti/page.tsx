@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useDebounce } from 'use-debounce'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
-import { ViewDynamic, ViewField } from '@/components/view/view-dynamic' // ✅ nuovo import
+import { ViewDynamic, ViewField } from '@/components/view/view-dynamic'
 import { openViewDrawer } from '@/lib/utils/view'
 import type { ColumnDefinition } from '@/components/table/data-table-dynamic-server'
 
@@ -24,12 +25,12 @@ export type ProductItem = {
 const columnTypes: Record<keyof ProductItem, ColumnDefinition<ProductItem>> = {
   sku:           { type: 'string' },
   name:          { type: 'string', label: 'Nome' },
-  unit_price:         { type: 'number', label: 'Prezzo' },
+  unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:      { type: 'string', label: 'Fornitore' },
-  category_name: { type: 'string', flags: ['filter'], label: 'Categoria' },
+  source:        { type: 'string', label: 'Fornitore' },
+  category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
-  colore:        { type: 'string', flags: ['filter'] },
+  colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
 }
 
 const fetchFilters = async (): Promise<Record<string, string[]>> => {
@@ -57,6 +58,7 @@ export default function ProdottiPage() {
   const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState<Record<string, string[]>>({})
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebounce(search, 500)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -77,18 +79,22 @@ export default function ProdottiPage() {
       })
   }, [])
 
-  const fetchData = async () => {
+  const fetchData = async ({
+    search = debouncedSearch,
+    filters = activeFilters,
+    page = pageIndex,
+    size = pageSize
+  } = {}) => {
     try {
       setLoading(true)
-      const prodottiRes = await fetchProducts({
+      const res = await fetchProducts({
         search,
-        limit: pageSize,
-        offset: pageIndex * pageSize,
-        filters: activeFilters,
+        filters,
+        limit: size,
+        offset: page * size
       })
-
-      setProducts(prodottiRes.data)
-      setTotal(prodottiRes.total)
+      setProducts(res.data)
+      setTotal(res.total)
     } catch (e) {
       console.error('Errore fetch prodotti:', e)
       errorRef.current?.('Errore', 'Impossibile caricare i prodotti')
@@ -99,7 +105,7 @@ export default function ProdottiPage() {
 
   useEffect(() => {
     fetchData()
-  }, [search, pageSize, pageIndex, activeFilters])
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
 
   const viewFields: ViewField[] = [
     { name: 'sku', label: 'SKU', type: 'text' },
@@ -125,7 +131,10 @@ export default function ProdottiPage() {
           data={products}
           total={total}
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={(val) => {
+            setSearch(val)
+            setPageIndex(0)
+          }}
           pageIndex={pageIndex}
           pageSize={pageSize}
           onPageChange={setPageIndex}
@@ -145,7 +154,7 @@ export default function ProdottiPage() {
               title: `${row.original.name}`,
               data: row.original
             })
-          }          
+          }
           onDelete={async (items) => {
             try {
               const skus = items.map((item) => item.sku)
