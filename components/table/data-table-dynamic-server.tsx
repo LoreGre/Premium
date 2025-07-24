@@ -58,6 +58,7 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import Image from 'next/image'
+import { X } from 'lucide-react'
 
 export type ColumnType =
   | 'string'
@@ -88,6 +89,7 @@ export interface DataTableDynamicServerProps<T extends Record<string, any>> {
   filters?: Record<string, string[]>
   activeFilters: Record<string, string[]>
   onFilterChange: (filters: Record<string, string[]>) => void
+  onResetFilters?: () => void
   columnTypes: Record<keyof T, ColumnDefinition<T>>
   onAdd?: () => void
   onEdit?: (row: Row<T>) => void
@@ -108,6 +110,7 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   filters = {},
   activeFilters,
   onFilterChange,
+  onResetFilters,
   columnTypes,
   onAdd,
   onEdit,
@@ -242,16 +245,33 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
 
             <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-[200px]">
                 <Input
                     type="text"
                     placeholder="Cerca..."
-                    className="w-[200px]"
+                    className="pr-8"
                     value={search}
                     onChange={(e) => {
                     onSearchChange(e.target.value)
                     onPageChange(0)
                     }}
                 />
+                {!!search && (
+                    <button
+                    type="button"
+                    onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onSearchChange('')
+                        onPageChange(0)
+                      }}
+                    aria-label="Cancella ricerca"                      
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-foreground hover:text-background transition"
+                    >
+                    <span className="text-xs font-bold"><X className="h-3.5 w-3.5" /></span>
+                    </button>
+                )}
+                </div>
 
                 {Object.entries(filters).map(([key, options]) => {
                 const sorted = [...options].sort((a, b) => a.localeCompare(b))
@@ -299,9 +319,15 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
                 className="text-muted-foreground"
                 disabled={Object.values(activeFilters).every((arr) => !arr?.length) && !search}
                 onClick={() => {
+                    if (typeof onResetFilters === 'function') {
+                    onResetFilters()
+                    } else {
+                    // fallback per retrocompatibilità
                     onFilterChange({})
+                    onSearchChange('')
+                    }
                     onPageChange(0)
-                  }}                                   
+                }}
                 >
                 <IconRefresh className="mr-2 size-4" />
                 Azzera Filtri

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useDebounce } from 'use-debounce'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
@@ -40,9 +39,7 @@ const fetchFilters = async (): Promise<Record<string, string[]>> => {
   if (!token) throw new Error('Token non disponibile')
 
   const res = await fetch('/api/prodotti/filtri', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}` },
   })
 
   if (!res.ok) throw new Error('Errore fetch filtri')
@@ -58,7 +55,7 @@ export default function ProdottiPage() {
   const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState<Record<string, string[]>>({})
   const [search, setSearch] = useState('')
-  const [debouncedSearch] = useDebounce(search, 500)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -79,19 +76,21 @@ export default function ProdottiPage() {
       })
   }, [])
 
-  const fetchData = async ({
-    search = debouncedSearch,
-    filters = activeFilters,
-    page = pageIndex,
-    size = pageSize
-  } = {}) => {
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [search])
+
+  const fetchData = async () => {
     try {
       setLoading(true)
       const res = await fetchProducts({
-        search,
-        filters,
-        limit: size,
-        offset: page * size
+        search: debouncedSearch,
+        filters: activeFilters,
+        limit: pageSize,
+        offset: pageIndex * pageSize
       })
       setProducts(res.data)
       setTotal(res.total)
@@ -105,7 +104,14 @@ export default function ProdottiPage() {
 
   useEffect(() => {
     fetchData()
-  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])  
+
+  const handleResetAll = () => {
+    setSearch('')
+    setDebouncedSearch('') // immediato
+    setActiveFilters({})
+    setPageIndex(0)
+  }
 
   const viewFields: ViewField[] = [
     { name: 'sku', label: 'SKU', type: 'text' },
@@ -148,6 +154,7 @@ export default function ProdottiPage() {
             setActiveFilters(filters)
             setPageIndex(0)
           }}
+          onResetFilters={handleResetAll}
           columnTypes={columnTypes}
           onView={(row) =>
             openViewDrawer(setViewer, {

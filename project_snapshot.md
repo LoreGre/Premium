@@ -1,4 +1,4 @@
-# Project Premium snapshot - Gio 24 Lug 2025 16:27:21 CEST
+# Project Premium snapshot - Gio 24 Lug 2025 17:17:18 CEST
 
 ## Directory tree
 
@@ -484,6 +484,13 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProductItem } from '@/components/chat/types'
 
+function cleanProduct(product: any): ProductItem {
+  return {
+    ...product,
+    _id: product._id?.toString?.() ?? undefined,
+  }
+}
+
 export async function GET(req: Request) {
   const auth = await requireAuthUser(req)
   if ('status' in auth) return auth
@@ -496,7 +503,7 @@ export async function GET(req: Request) {
     const chatSessions = await getMongoCollection('chat_sessions')
     const allSessions = await chatSessions
       .find({})
-      .sort({ updatedAt: -1 }) // -1 = ordine decrescente
+      .sort({ updatedAt: -1 })
       .toArray()
 
     logger.info('Sessioni chat caricate', { count: allSessions.length })
@@ -513,7 +520,7 @@ export async function GET(req: Request) {
 
     const usersData = usersList.users.filter(u => userIds.includes(u.id))
 
-    // 3. Recupero tutti i messaggi una volta sola
+    // 3. Recupero tutti i messaggi
     const chatMessages = await getMongoCollection('chat_messages')
     const allMessages = await chatMessages
       .find({ session_id: { $in: allSessions.map(s => new ObjectId(s._id)) } })
@@ -523,14 +530,14 @@ export async function GET(req: Request) {
     // 4. Mappo la risposta
     const sessionsWithDetails = allSessions.map(session => {
       const sessionIdStr = session._id.toString()
-      const sessionMessages = allMessages.filter(msg =>
-        msg.session_id.toString() === sessionIdStr
+      const sessionMessages = allMessages.filter(
+        msg => msg.session_id?.toString() === sessionIdStr
       )
 
       const firstMsg = sessionMessages.find(m => m.role === 'user')
 
       const allProducts: ProductItem[] = sessionMessages
-        .flatMap(msg => msg.products || [])
+        .flatMap(msg => (msg.products || []).map(cleanProduct))
         .filter(p => p?.sku)
 
       const deduped = Object.values(
@@ -1143,7 +1150,6 @@ export async function deleteProducts(skus: string[]): Promise<void> {
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useDebounce } from 'use-debounce'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
@@ -1182,9 +1188,7 @@ const fetchFilters = async (): Promise<Record<string, string[]>> => {
   if (!token) throw new Error('Token non disponibile')
 
   const res = await fetch('/api/prodotti/filtri', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}` },
   })
 
   if (!res.ok) throw new Error('Errore fetch filtri')
@@ -1200,7 +1204,7 @@ export default function ProdottiPage() {
   const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState<Record<string, string[]>>({})
   const [search, setSearch] = useState('')
-  const [debouncedSearch] = useDebounce(search, 500)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -1221,19 +1225,21 @@ export default function ProdottiPage() {
       })
   }, [])
 
-  const fetchData = async ({
-    search = debouncedSearch,
-    filters = activeFilters,
-    page = pageIndex,
-    size = pageSize
-  } = {}) => {
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [search])
+
+  const fetchData = async () => {
     try {
       setLoading(true)
       const res = await fetchProducts({
-        search,
-        filters,
-        limit: size,
-        offset: page * size
+        search: debouncedSearch,
+        filters: activeFilters,
+        limit: pageSize,
+        offset: pageIndex * pageSize
       })
       setProducts(res.data)
       setTotal(res.total)
@@ -1247,7 +1253,14 @@ export default function ProdottiPage() {
 
   useEffect(() => {
     fetchData()
-  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])  
+
+  const handleResetAll = () => {
+    setSearch('')
+    setDebouncedSearch('') // immediato
+    setActiveFilters({})
+    setPageIndex(0)
+  }
 
   const viewFields: ViewField[] = [
     { name: 'sku', label: 'SKU', type: 'text' },
@@ -1290,6 +1303,7 @@ export default function ProdottiPage() {
             setActiveFilters(filters)
             setPageIndex(0)
           }}
+          onResetFilters={handleResetAll}
           columnTypes={columnTypes}
           onView={(row) =>
             openViewDrawer(setViewer, {
@@ -1321,7 +1335,6 @@ export default function ProdottiPage() {
     </main>
   )
 }
-
 ---
 ### ./app/(dashboard)/fornitori/actions.ts
 
@@ -5959,7 +5972,12 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
           session_id: msg.session_id.toString(),
           _id: msg._id.toString(),
           _ui_id: `from-db-${msg._id.toString()}`,
-        }))
+          products: Array.isArray(msg.products)
+            ? msg.products.map((p) => ({
+                ...p,
+              }))
+            : undefined
+        }))        
   
         setMessages(uiMessages)
       } catch (err) {
@@ -7145,7 +7163,8 @@ import {
   IconUsers,
   IconBuildingStore,
   IconLogout,
-  IconMessageDots
+  IconMessageDots,
+  IconPackage
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -7179,7 +7198,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
       { title: "Chats", url: "/chats", icon: IconMessageDots },
-      { title: "Prodotti", url: "/prodotti", icon: IconMessageDots },
+      { title: "Prodotti", url: "/prodotti", icon: IconPackage },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },
@@ -7882,6 +7901,7 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import Image from 'next/image'
+import { X } from 'lucide-react'
 
 export type ColumnType =
   | 'string'
@@ -7912,6 +7932,7 @@ export interface DataTableDynamicServerProps<T extends Record<string, any>> {
   filters?: Record<string, string[]>
   activeFilters: Record<string, string[]>
   onFilterChange: (filters: Record<string, string[]>) => void
+  onResetFilters?: () => void
   columnTypes: Record<keyof T, ColumnDefinition<T>>
   onAdd?: () => void
   onEdit?: (row: Row<T>) => void
@@ -7932,6 +7953,7 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   filters = {},
   activeFilters,
   onFilterChange,
+  onResetFilters,
   columnTypes,
   onAdd,
   onEdit,
@@ -8066,16 +8088,33 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
 
             <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-[200px]">
                 <Input
                     type="text"
                     placeholder="Cerca..."
-                    className="w-[200px]"
+                    className="pr-8"
                     value={search}
                     onChange={(e) => {
                     onSearchChange(e.target.value)
                     onPageChange(0)
                     }}
                 />
+                {!!search && (
+                    <button
+                    type="button"
+                    onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onSearchChange('')
+                        onPageChange(0)
+                      }}
+                    aria-label="Cancella ricerca"                      
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-foreground hover:text-background transition"
+                    >
+                    <span className="text-xs font-bold"><X className="h-3.5 w-3.5" /></span>
+                    </button>
+                )}
+                </div>
 
                 {Object.entries(filters).map(([key, options]) => {
                 const sorted = [...options].sort((a, b) => a.localeCompare(b))
@@ -8123,9 +8162,15 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
                 className="text-muted-foreground"
                 disabled={Object.values(activeFilters).every((arr) => !arr?.length) && !search}
                 onClick={() => {
+                    if (typeof onResetFilters === 'function') {
+                    onResetFilters()
+                    } else {
+                    // fallback per retrocompatibilità
                     onFilterChange({})
+                    onSearchChange('')
+                    }
                     onPageChange(0)
-                  }}                                   
+                }}
                 >
                 <IconRefresh className="mr-2 size-4" />
                 Azzera Filtri
