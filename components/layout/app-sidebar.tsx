@@ -45,6 +45,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
       { title: "Chats", url: "/chats", icon: IconMessageDots },
+      { title: "Prodotti", url: "/prodotti", icon: IconMessageDots },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },

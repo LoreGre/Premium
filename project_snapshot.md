@@ -1,4 +1,4 @@
-# Project Premium snapshot - Mer 23 Lug 2025 18:31:29 CEST
+# Project Premium snapshot - Gio 24 Lug 2025 15:31:05 CEST
 
 ## Directory tree
 
@@ -19,7 +19,10 @@
 │   │   │   ├── actions.ts
 │   │   │   └── page.tsx
 │   │   ├── layout.tsx
-│   │   └── offerte
+│   │   ├── offerte
+│   │   │   └── page.tsx
+│   │   └── prodotti
+│   │       ├── actions.ts
 │   │       └── page.tsx
 │   ├── api
 │   │   ├── chat
@@ -28,6 +31,10 @@
 │   │   │   └── route.ts
 │   │   ├── chats
 │   │   │   ├── [id]
+│   │   │   │   └── route.ts
+│   │   │   └── route.ts
+│   │   ├── prodotti
+│   │   │   ├── filtri
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
 │   │   └── silan
@@ -60,41 +67,45 @@
 │   │   ├── nav-secondary.tsx
 │   │   ├── site-footer.tsx
 │   │   └── site-header.tsx
+│   ├── prodotti
+│   │   └── searchProductsPaginated.ts
 │   ├── table
+│   │   ├── data-table-dynamic-server.tsx
 │   │   └── data-table-dynamic.tsx
 │   ├── theme-provider.tsx
 │   ├── theme-toggle.tsx
-│   └── ui
-│       ├── alert-dialog.tsx
-│       ├── avatar.tsx
-│       ├── badge.tsx
-│       ├── breadcrumb.tsx
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── chart.tsx
-│       ├── checkbox.tsx
-│       ├── command.tsx
-│       ├── dialog.tsx
-│       ├── drawer.tsx
-│       ├── dropdown-menu.tsx
-│       ├── input.tsx
-│       ├── label.tsx
-│       ├── popover.tsx
-│       ├── scroll-area.tsx
-│       ├── select.tsx
-│       ├── separator.tsx
-│       ├── sheet.tsx
-│       ├── sidebar.tsx
-│       ├── skeleton.tsx
-│       ├── sonner.tsx
-│       ├── table.tsx
-│       ├── tabs.tsx
-│       ├── textarea.tsx
-│       ├── toggle-group.tsx
-│       ├── toggle.tsx
-│       └── tooltip.tsx
+│   ├── ui
+│   │   ├── alert-dialog.tsx
+│   │   ├── avatar.tsx
+│   │   ├── badge.tsx
+│   │   ├── breadcrumb.tsx
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── chart.tsx
+│   │   ├── checkbox.tsx
+│   │   ├── command.tsx
+│   │   ├── dialog.tsx
+│   │   ├── drawer.tsx
+│   │   ├── dropdown-menu.tsx
+│   │   ├── input.tsx
+│   │   ├── label.tsx
+│   │   ├── popover.tsx
+│   │   ├── scroll-area.tsx
+│   │   ├── select.tsx
+│   │   ├── separator.tsx
+│   │   ├── sheet.tsx
+│   │   ├── sidebar.tsx
+│   │   ├── skeleton.tsx
+│   │   ├── sonner.tsx
+│   │   ├── table.tsx
+│   │   ├── tabs.tsx
+│   │   ├── textarea.tsx
+│   │   ├── toggle-group.tsx
+│   │   ├── toggle.tsx
+│   │   └── tooltip.tsx
+│   └── view
+│       └── view-dynamic.tsx
 ├── components.json
-├── embedding.txt
 ├── eslint.config.mjs
 ├── hooks
 │   ├── use-mobile.ts
@@ -126,7 +137,8 @@
 │   │   ├── client.ts
 │   │   └── server.ts
 │   ├── utils
-│   │   └── forms.ts
+│   │   ├── forms.ts
+│   │   └── view.ts
 │   └── utils.ts
 ├── middleware.ts
 ├── next-env.d.ts
@@ -147,7 +159,7 @@
 ├── tsconfig.json
 └── update-env.sh
 
-35 directories, 109 files
+40 directories, 116 files
 
 ## File list & contents (.ts/.tsx only)
 
@@ -231,6 +243,101 @@ export default function RootLayout({
       </body>
     </html>
   )
+}
+
+---
+### ./app/api/prodotti/filtri/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
+import { getMongoCollection } from '@/lib/mongo/client'
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuthUser(req)
+  if ('status' in auth) return auth
+
+  try {
+    const prodotti = await getMongoCollection('prodotti')
+
+    const [categorie, colori] = await Promise.all([
+      prodotti.distinct('category_name'),
+      prodotti.distinct('colore')
+    ])
+
+    return NextResponse.json({
+      category_name: categorie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
+      colore: colori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
+    })
+  } catch (err) {
+    console.error('Errore fetch filters:', err)
+    return NextResponse.json({ error: 'Errore durante il recupero dei filtri' }, { status: 500 })
+  }
+}
+  
+---
+### ./app/api/prodotti/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
+import { getMongoCollection } from '@/lib/mongo/client'
+import { logger } from '@/lib/logger'
+import { searchProductsPaginated } from '@/components/prodotti/searchProductsPaginated'
+import type { SearchProductsParams } from '@/components/prodotti/searchProductsPaginated'
+
+/**
+ * POST /api/prodotti
+ * Ricerca paginata e filtrata dei prodotti
+ */
+export async function POST(req: NextRequest) {
+  const auth = await requireAuthUser(req)
+  if ('status' in auth) return auth
+
+  try {
+    const body = await req.json() as SearchProductsParams
+
+    const result = await searchProductsPaginated({
+      search: body.search || '', // ✅ corretto: usiamo `search`
+      limit: body.limit || 50,
+      offset: body.offset || 0,
+      sortBy: body.sortBy,
+      sortDir: body.sortDir,
+      filters: body.filters,
+    })
+
+    return NextResponse.json(result)
+  } catch (err) {
+    logger.error('Errore /api/prodotti [POST]', { error: err })
+    return NextResponse.json({ error: 'Errore fetch prodotti' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/prodotti
+ * Elimina prodotti in base agli SKU forniti
+ */
+export async function DELETE(req: Request) {
+  const auth = await requireAuthUser(req)
+  if ('status' in auth) return auth
+
+  try {
+    const { skus } = await req.json()
+
+    if (!Array.isArray(skus)) {
+      return NextResponse.json({ error: 'Payload malformato: skus deve essere un array' }, { status: 400 })
+    }
+
+    console.log('🔍 SKU da eliminare:', skus)
+
+    const collection = await getMongoCollection('prodotti')
+    const result = await collection.deleteMany({ sku: { $in: skus } })
+
+    console.log(`🗑️ Eliminati ${result.deletedCount} prodotti`)
+
+    return NextResponse.json({ success: true, deleted: result.deletedCount })
+  } catch (err: any) {
+    console.error('❌ Errore /api/prodotti [DELETE]:', err.message ?? err)
+    return NextResponse.json({ error: err.message ?? 'Errore durante eliminazione di prodotti' }, { status: 500 })
+  }
 }
 
 ---
@@ -962,6 +1069,251 @@ export default function CustomersPage() {
 }
 
 ---
+### ./app/(dashboard)/prodotti/actions.ts
+
+'use client'
+
+import { createClient } from '@/lib/supabase/client'
+import type { ProductItem } from './page'
+
+export type QueryParams = {
+  search?: string
+  filters?: Record<string, string[]>
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
+  limit?: number
+  offset?: number
+}
+
+export async function fetchProducts(params: QueryParams): Promise<{ data: ProductItem[]; total: number }> {
+  const supabase = createClient()
+  const { data: sessionData, error } = await supabase.auth.getSession()
+  if (error) throw new Error(error.message)
+  if (!sessionData.session) throw new Error('Sessione non trovata')
+
+  const token = sessionData.session.access_token
+
+  const res = await fetch(`/api/prodotti`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(params),
+    cache: 'no-store'
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error('Errore API Fetch Prodotti:', errText)
+    throw new Error('Errore fetch prodotti')
+  }
+  
+  return res.json()
+}
+
+export async function deleteProducts(skus: string[]): Promise<void> {
+  const supabase = createClient()
+  const { data: sessionData, error } = await supabase.auth.getSession()
+  if (error) throw new Error(error.message)
+  if (!sessionData.session) throw new Error('Sessione non trovata')
+
+  const token = sessionData.session.access_token
+
+  const res = await fetch(`/api/prodotti`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ skus }), // ✅ wrap con chiave
+    cache: 'no-store'
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error('Errore API Delete:', errText)
+    throw new Error('Errore eliminazione prodotti')
+  }
+}
+
+---
+### ./app/(dashboard)/prodotti/page.tsx
+
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { fetchProducts, deleteProducts } from './actions'
+import { useNotify } from '@/hooks/use-notify'
+import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
+import { createClient } from '@/lib/supabase/client'
+import { Loader2 } from 'lucide-react'
+import { ViewDynamic, ViewField } from '@/components/view/view-dynamic' // ✅ nuovo import
+import { openViewDrawer } from '@/lib/utils/view'
+import type { ColumnDefinition } from '@/components/table/data-table-dynamic-server'
+
+export type ProductItem = {
+  sku: string
+  name: string
+  unit_price: number
+  qty?: number
+  source: string
+  category_name?: string
+  thumbnail: string
+  colore?: string
+}
+
+const columnTypes: Record<keyof ProductItem, ColumnDefinition<ProductItem>> = {
+  sku:           { type: 'string' },
+  name:          { type: 'string', label: 'Nome' },
+  unit_price:         { type: 'number', label: 'Prezzo' },
+  qty:           { type: 'number', label: 'Qta' },
+  source:      { type: 'string', label: 'Fornitore' },
+  category_name: { type: 'string', flags: ['filter'], label: 'Categoria' },
+  thumbnail:     { type: 'image', label: 'Immagine' },
+  colore:        { type: 'string', flags: ['filter'] },
+}
+
+const fetchFilters = async (): Promise<Record<string, string[]>> => {
+  const supabase = createClient()
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Token non disponibile')
+
+  const res = await fetch('/api/prodotti/filtri', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (!res.ok) throw new Error('Errore fetch filtri')
+  return res.json()
+}
+
+export default function ProdottiPage() {
+  const { success, error } = useNotify()
+  const errorRef = useRef(error)
+  errorRef.current = error
+
+  const [products, setProducts] = useState<ProductItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [filters, setFilters] = useState<Record<string, string[]>>({})
+  const [search, setSearch] = useState('')
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
+  const [loading, setLoading] = useState(false)
+
+  const [viewer, setViewer] = useState<{
+    open: boolean
+    title: string
+    data: Partial<ProductItem>
+  }>({ open: false, title: '', data: {} })
+
+  useEffect(() => {
+    fetchFilters()
+      .then(setFilters)
+      .catch((e) => {
+        console.error('Errore fetch filtri:', e)
+        errorRef.current?.('Errore', 'Impossibile caricare i filtri')
+      })
+  }, [])
+
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      const prodottiRes = await fetchProducts({
+        search,
+        limit: pageSize,
+        offset: pageIndex * pageSize,
+        filters: activeFilters,
+      })
+
+      setProducts(prodottiRes.data)
+      setTotal(prodottiRes.total)
+    } catch (e) {
+      console.error('Errore fetch prodotti:', e)
+      errorRef.current?.('Errore', 'Impossibile caricare i prodotti')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [search, pageSize, pageIndex, activeFilters])
+
+  const viewFields: ViewField[] = [
+    { name: 'sku', label: 'SKU', type: 'text' },
+    { name: 'name', label: 'Nome', type: 'text' },
+    { name: 'unit_price', label: 'Prezzo', type: 'text' },
+    { name: 'qty', label: 'Quantità', type: 'text' },
+    { name: 'source', label: 'Fornitore', type: 'text' },
+    { name: 'category_name', label: 'Categoria', type: 'list' },
+    { name: 'colore', label: 'Colore', type: 'list' },
+    { name: 'link', label: 'Link', type: 'link' },
+    { name: 'thumbnail', label: 'Immagine', type: 'image' },
+  ]
+
+  return (
+    <main className="p-2">
+      {loading ? (
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <DataTableDynamicServer<ProductItem>
+          title="Prodotti"
+          data={products}
+          total={total}
+          search={search}
+          onSearchChange={setSearch}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          onPageChange={setPageIndex}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPageIndex(0)
+          }}
+          filters={filters}
+          activeFilters={activeFilters}
+          onFilterChange={(filters) => {
+            setActiveFilters(filters)
+            setPageIndex(0)
+          }}
+          columnTypes={columnTypes}
+          onView={(row) =>
+            openViewDrawer(setViewer, {
+              title: `Visualizza Prodotto: ${row.original.name}`,
+              data: row.original
+            })
+          }          
+          onDelete={async (items) => {
+            try {
+              const skus = items.map((item) => item.sku)
+              await deleteProducts(skus)
+              await fetchData()
+              success('Eliminazione completata')
+            } catch (err: any) {
+              console.error(err)
+              errorRef.current?.('Errore', err.message ?? 'Errore eliminazione')
+            }
+          }}
+        />
+      )}
+
+      <ViewDynamic
+        open={viewer.open}
+        onOpenChange={(open) => setViewer((prev) => ({ ...prev, open }))}
+        title={viewer.title}
+        values={viewer.data}
+        fields={viewFields}
+      />
+    </main>
+  )
+}
+
+---
 ### ./app/(dashboard)/fornitori/actions.ts
 
 'use client'
@@ -1540,3049 +1892,6 @@ export default function LoginPage() {
   )
 }
 
-
----
-### ./.next/types/app/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/page.tsx
-import * as entry from '../../../app/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../app/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/layout.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/layout.tsx
-import * as entry from '../../../app/layout.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../app/layout.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<LayoutProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<LayoutProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<LayoutProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/chat/feedback/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/chat/feedback/route.ts
-import * as entry from '../../../../../../app/api/chat/feedback/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../../app/api/chat/feedback/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/chat/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/chat/route.ts
-import * as entry from '../../../../../app/api/chat/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../app/api/chat/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/chats/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/chats/route.ts
-import * as entry from '../../../../../app/api/chats/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../app/api/chats/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/chats/[id]/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/chats/[id]/route.ts
-import * as entry from '../../../../../../app/api/chats/[id]/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../../app/api/chats/[id]/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/silan/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/silan/route.ts
-import * as entry from '../../../../../app/api/silan/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../app/api/silan/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/api/silan/qty/route.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/api/silan/qty/route.ts
-import * as entry from '../../../../../../app/api/silan/qty/route.js'
-import type { NextRequest } from 'next/server.js'
-
-type TEntry = typeof import('../../../../../../app/api/silan/qty/route.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  GET?: Function
-  HEAD?: Function
-  OPTIONS?: Function
-  POST?: Function
-  PUT?: Function
-  DELETE?: Function
-  PATCH?: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-}, TEntry, ''>>()
-
-type RouteContext = { params: Promise<SegmentParams> }
-// Check the prop type of the entry function
-if ('GET' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'GET'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'GET',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'GET',
-        __return_type__: ReturnType<MaybeField<TEntry, 'GET'>>
-      },
-      'GET'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('HEAD' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'HEAD'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'HEAD',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'HEAD',
-        __return_type__: ReturnType<MaybeField<TEntry, 'HEAD'>>
-      },
-      'HEAD'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('OPTIONS' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'OPTIONS'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'OPTIONS',
-        __return_type__: ReturnType<MaybeField<TEntry, 'OPTIONS'>>
-      },
-      'OPTIONS'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('POST' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'POST'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'POST',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'POST',
-        __return_type__: ReturnType<MaybeField<TEntry, 'POST'>>
-      },
-      'POST'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PUT' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PUT'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PUT',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PUT',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PUT'>>
-      },
-      'PUT'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('DELETE' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'DELETE'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'DELETE',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'DELETE',
-        __return_type__: ReturnType<MaybeField<TEntry, 'DELETE'>>
-      },
-      'DELETE'
-    >
-  >()
-}
-// Check the prop type of the entry function
-if ('PATCH' in entry) {
-  checkFields<
-    Diff<
-      ParamCheck<Request | NextRequest>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'first'
-        __param_type__: FirstArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  checkFields<
-    Diff<
-      ParamCheck<RouteContext>,
-      {
-        __tag__: 'PATCH'
-        __param_position__: 'second'
-        __param_type__: SecondArg<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-  
-  checkFields<
-    Diff<
-      {
-        __tag__: 'PATCH',
-        __return_type__: Response | void | never | Promise<Response | void | never>
-      },
-      {
-        __tag__: 'PATCH',
-        __return_type__: ReturnType<MaybeField<TEntry, 'PATCH'>>
-      },
-      'PATCH'
-    >
-  >()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-type ParamCheck<T> = {
-  __tag__: string
-  __param_position__: string
-  __param_type__: T
-}
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/clienti/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/clienti/page.tsx
-import * as entry from '../../../../../app/(dashboard)/clienti/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/clienti/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/fornitori/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/fornitori/page.tsx
-import * as entry from '../../../../../app/(dashboard)/fornitori/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/fornitori/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/dashboard/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/dashboard/page.tsx
-import * as entry from '../../../../../app/(dashboard)/dashboard/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/dashboard/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/dashboard/[id]/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/dashboard/[id]/page.tsx
-import * as entry from '../../../../../../app/(dashboard)/dashboard/[id]/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../../app/(dashboard)/dashboard/[id]/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/chats/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/chats/page.tsx
-import * as entry from '../../../../../app/(dashboard)/chats/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/chats/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/(dashboard)/offerte/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/(dashboard)/offerte/page.tsx
-import * as entry from '../../../../../app/(dashboard)/offerte/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../../app/(dashboard)/offerte/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/app/login/page.ts
-
-// File: /Users/lorenzo/WebApp/premium/app/login/page.tsx
-import * as entry from '../../../../app/login/page.js'
-import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
-
-type TEntry = typeof import('../../../../app/login/page.js')
-
-type SegmentParams<T extends Object = any> = T extends Record<string, any>
-  ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
-  : T
-
-// Check that the entry is a valid entry
-checkFields<Diff<{
-  default: Function
-  config?: {}
-  generateStaticParams?: Function
-  revalidate?: RevalidateRange<TEntry> | false
-  dynamic?: 'auto' | 'force-dynamic' | 'error' | 'force-static'
-  dynamicParams?: boolean
-  fetchCache?: 'auto' | 'force-no-store' | 'only-no-store' | 'default-no-store' | 'default-cache' | 'only-cache' | 'force-cache'
-  preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
-  runtime?: 'nodejs' | 'experimental-edge' | 'edge'
-  maxDuration?: number
-  
-  metadata?: any
-  generateMetadata?: Function
-  viewport?: any
-  generateViewport?: Function
-  experimental_ppr?: boolean
-  
-}, TEntry, ''>>()
-
-
-// Check the prop type of the entry function
-checkFields<Diff<PageProps, FirstArg<TEntry['default']>, 'default'>>()
-
-// Check the arguments and return type of the generateMetadata function
-if ('generateMetadata' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-  checkFields<Diff<ResolvingMetadata, SecondArg<MaybeField<TEntry, 'generateMetadata'>>, 'generateMetadata'>>()
-}
-
-// Check the arguments and return type of the generateViewport function
-if ('generateViewport' in entry) {
-  checkFields<Diff<PageProps, FirstArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-  checkFields<Diff<ResolvingViewport, SecondArg<MaybeField<TEntry, 'generateViewport'>>, 'generateViewport'>>()
-}
-
-// Check the arguments and return type of the generateStaticParams function
-if ('generateStaticParams' in entry) {
-  checkFields<Diff<{ params: SegmentParams }, FirstArg<MaybeField<TEntry, 'generateStaticParams'>>, 'generateStaticParams'>>()
-  checkFields<Diff<{ __tag__: 'generateStaticParams', __return_type__: any[] | Promise<any[]> }, { __tag__: 'generateStaticParams', __return_type__: ReturnType<MaybeField<TEntry, 'generateStaticParams'>> }>>()
-}
-
-export interface PageProps {
-  params?: Promise<SegmentParams>
-  searchParams?: Promise<any>
-}
-export interface LayoutProps {
-  children?: React.ReactNode
-
-  params?: Promise<SegmentParams>
-}
-
-// =============
-// Utility types
-type RevalidateRange<T> = T extends { revalidate: any } ? NonNegative<T['revalidate']> : never
-
-// If T is unknown or any, it will be an empty {} type. Otherwise, it will be the same as Omit<T, keyof Base>.
-type OmitWithTag<T, K extends keyof any, _M> = Omit<T, K>
-type Diff<Base, T extends Base, Message extends string = ''> = 0 extends (1 & T) ? {} : OmitWithTag<T, keyof Base, Message>
-
-type FirstArg<T extends Function> = T extends (...args: [infer T, any]) => any ? unknown extends T ? any : T : never
-type SecondArg<T extends Function> = T extends (...args: [any, infer T]) => any ? unknown extends T ? any : T : never
-type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G extends Function ? G : never : never
-
-
-
-function checkFields<_ extends { [k in keyof any]: never }>() {}
-
-// https://github.com/sindresorhus/type-fest
-type Numeric = number | bigint
-type Zero = 0 | 0n
-type Negative<T extends Numeric> = T extends Zero ? never : `${T}` extends `-${string}` ? T : never
-type NonNegative<T extends Numeric> = T extends Zero ? T : Negative<T> extends never ? T : '__invalid_negative_number__'
-
----
-### ./.next/types/cache-life.d.ts
-
-// Type definitions for Next.js cacheLife configs
-
-declare module 'next/cache' {
-  export { unstable_cache } from 'next/dist/server/web/spec-extension/unstable-cache'
-  export {
-    revalidateTag,
-    revalidatePath,
-    unstable_expireTag,
-    unstable_expirePath,
-  } from 'next/dist/server/web/spec-extension/revalidate'
-  export { unstable_noStore } from 'next/dist/server/web/spec-extension/unstable-no-store'
-
-  
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"default"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 900 seconds (15 minutes)
-     *   expire:     never
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 15 minutes, start revalidating new values in the background.
-     * It lives for the maximum age of the server cache. If this entry has no traffic for a while, it may serve an old value the next request.
-     */
-    export function unstable_cacheLife(profile: "default"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"seconds"` profile.
-     * ```
-     *   stale:      0 seconds
-     *   revalidate: 1 seconds
-     *   expire:     60 seconds (1 minute)
-     * ```
-     * 
-     * This cache may be stale on clients for 0 seconds before checking with the server.
-     * If the server receives a new request after 1 seconds, start revalidating new values in the background.
-     * If this entry has no traffic for 1 minute it will expire. The next request will recompute it.
-     */
-    export function unstable_cacheLife(profile: "seconds"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"minutes"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 60 seconds (1 minute)
-     *   expire:     3600 seconds (1 hour)
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 1 minute, start revalidating new values in the background.
-     * If this entry has no traffic for 1 hour it will expire. The next request will recompute it.
-     */
-    export function unstable_cacheLife(profile: "minutes"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"hours"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 3600 seconds (1 hour)
-     *   expire:     86400 seconds (1 day)
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 1 hour, start revalidating new values in the background.
-     * If this entry has no traffic for 1 day it will expire. The next request will recompute it.
-     */
-    export function unstable_cacheLife(profile: "hours"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"days"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 86400 seconds (1 day)
-     *   expire:     604800 seconds (1 week)
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 1 day, start revalidating new values in the background.
-     * If this entry has no traffic for 1 week it will expire. The next request will recompute it.
-     */
-    export function unstable_cacheLife(profile: "days"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"weeks"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 604800 seconds (1 week)
-     *   expire:     2592000 seconds (30 days)
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 1 week, start revalidating new values in the background.
-     * If this entry has no traffic for 30 days it will expire. The next request will recompute it.
-     */
-    export function unstable_cacheLife(profile: "weeks"): void
-    
-    /**
-     * Cache this `"use cache"` for a timespan defined by the `"max"` profile.
-     * ```
-     *   stale:      300 seconds (5 minutes)
-     *   revalidate: 2592000 seconds (30 days)
-     *   expire:     never
-     * ```
-     * 
-     * This cache may be stale on clients for 5 minutes before checking with the server.
-     * If the server receives a new request after 30 days, start revalidating new values in the background.
-     * It lives for the maximum age of the server cache. If this entry has no traffic for a while, it may serve an old value the next request.
-     */
-    export function unstable_cacheLife(profile: "max"): void
-    
-    /**
-     * Cache this `"use cache"` using a custom timespan.
-     * ```
-     *   stale: ... // seconds
-     *   revalidate: ... // seconds
-     *   expire: ... // seconds
-     * ```
-     *
-     * This is similar to Cache-Control: max-age=`stale`,s-max-age=`revalidate`,stale-while-revalidate=`expire-revalidate`
-     *
-     * If a value is left out, the lowest of other cacheLife() calls or the default, is used instead.
-     */
-    export function unstable_cacheLife(profile: {
-      /**
-       * This cache may be stale on clients for ... seconds before checking with the server.
-       */
-      stale?: number,
-      /**
-       * If the server receives a new request after ... seconds, start revalidating new values in the background.
-       */
-      revalidate?: number,
-      /**
-       * If this entry has no traffic for ... seconds it will expire. The next request will recompute it.
-       */
-      expire?: number
-    }): void
-  
-
-  export { cacheTag as unstable_cacheTag } from 'next/dist/server/use-cache/cache-tag'
-}
 
 ---
 ### ./next-env.d.ts
@@ -7986,6 +5295,96 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
 export { Skeleton }
 
 ---
+### ./components/prodotti/searchProductsPaginated.ts
+
+import { getMongoCollection } from '@/lib/mongo/client'
+import type { ProductItem } from '@/app/(dashboard)/prodotti/page'
+import { Document, WithId } from 'mongodb'
+
+export type SearchProductsParams = {
+  search?: string
+  limit?: number
+  offset?: number
+  sortBy?: keyof ProductItem
+  sortDir?: 'asc' | 'desc'
+  filters?: Record<string, string[]>
+}
+
+export async function searchProductsPaginated({
+  search = '',
+  limit = 50,
+  offset = 0,
+  sortBy = 'name',
+  sortDir = 'asc',
+  filters = {}
+}: SearchProductsParams): Promise<{ data: ProductItem[]; total: number }> {
+  const prodotti = await getMongoCollection<ProductItem>('prodotti')
+
+  const pipeline: Document[] = []
+
+  const filterConditions: Record<string, unknown> = {}
+  Object.entries(filters).forEach(([field, values]) => {
+    if (Array.isArray(values) && values.length > 0) {
+      filterConditions[field] = { $in: values }
+    }
+  })
+
+  const query = search.trim()
+  const hasQuery = query.length > 0
+  const hasFilters = Object.keys(filterConditions).length > 0
+
+  if (hasQuery) {
+    pipeline.push({
+      $search: {
+        index: 'prodotti_index',
+        text: {
+          query,
+          path: ['sku', 'name', 'description', 'category_name', 'colore'],
+          fuzzy: { maxEdits: 2 }
+        }
+      }
+    })
+    if (hasFilters) pipeline.push({ $match: filterConditions })
+  } else {
+    if (hasFilters) pipeline.push({ $match: filterConditions })
+  }
+
+  pipeline.push({ $sort: { [sortBy]: sortDir === 'desc' ? -1 : 1 } })
+
+  pipeline.push({
+    $facet: {
+      data: [
+        { $skip: offset },
+        { $limit: limit },
+        {
+          $project: {
+            sku: 1,
+            name: 1,
+            description: 1,
+            unit_price: 1,
+            qty: 1,
+            source: 1,
+            category_name: 1,
+            thumbnail: 1,
+            link: 1,
+            colore: 1
+          }
+        }
+      ],
+      total: [{ $count: 'count' }]
+    }
+  })
+
+  const results = await prodotti.aggregate(pipeline).toArray()
+  const response = results[0] || {}
+
+  return {
+    data: response.data || [],
+    total: response.total?.[0]?.count || 0
+  }
+}
+
+---
 ### ./components/form/multi-select.tsx
 
 'use client'
@@ -9677,6 +7076,7 @@ function getTitleFromPath(path: string): string {
     "/clienti": "Clienti",
     "/fornitori": "Fornitori",
     "/chats": "Chats",
+    "/prodotti": "Prodotti",
   }
   return map[path] ?? "Area Riservata"
 }
@@ -9771,6 +7171,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     navMain: [
       { title: "Dashboard", url: "/dashboard", icon: IconDashboard },
       { title: "Chats", url: "/chats", icon: IconMessageDots },
+      { title: "Prodotti", url: "/prodotti", icon: IconMessageDots },
       { title: "Offerte",    url: "/offerte", icon: IconListDetails },
       { title: "Clienti",    url: "/clienti", icon: IconUsers },
       { title: "Fornitori",  url: "/fornitori", icon: IconBuildingStore },
@@ -10411,6 +7812,617 @@ export function DataTableDynamic<
 }
 
 ---
+### ./components/table/data-table-dynamic-server.tsx
+
+'use client'
+
+import * as React from 'react'
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+  ColumnDef,
+  VisibilityState,
+  Row,
+} from '@tanstack/react-table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronDown,
+  IconChevronsLeft,
+  IconChevronsRight,
+  IconLayoutColumns,
+  IconPlus,
+  IconDotsVertical,
+  IconRefresh,
+} from '@tabler/icons-react'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
+import Image from 'next/image'
+
+export type ColumnType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'image'
+  | 'email'
+  | 'phone'
+  | 'list'
+  | 'dateTime'
+
+export type ColumnDefinition<T> = {
+  type: ColumnType
+  label?: string
+  flags?: ('filter')[]
+}
+
+export interface DataTableDynamicServerProps<T extends Record<string, any>> {
+  title: string
+  data: T[]
+  total: number
+  search: string
+  onSearchChange: (value: string) => void
+  pageIndex: number
+  pageSize: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+  filters?: Record<string, string[]>
+  activeFilters: Record<string, string[]>
+  onFilterChange: (filters: Record<string, string[]>) => void
+  columnTypes: Record<keyof T, ColumnDefinition<T>>
+  onAdd?: () => void
+  onEdit?: (row: Row<T>) => void
+  onDelete?: (items: T[]) => void
+  onView?: (row: { original: T }) => void
+}
+
+export function DataTableDynamicServer<T extends Record<string, any>>({
+  title,
+  data,
+  total,
+  search,
+  onSearchChange,
+  pageIndex,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  filters = {},
+  activeFilters,
+  onFilterChange,
+  columnTypes,
+  onAdd,
+  onEdit,
+  onDelete,
+  onView,
+}: DataTableDynamicServerProps<T>) {
+  const pagesCount = Math.ceil(total / pageSize)
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
+  const [itemsToDelete, setItemsToDelete] = React.useState<T[]>([])
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+
+  const toggleFilter = (key: string, value: string) => {
+    const current = activeFilters[key] || []
+    const updated = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value]
+
+    onFilterChange({
+      ...activeFilters,
+      [key]: updated,
+    })
+    onPageChange(0)
+  }
+
+  const columns = React.useMemo<ColumnDef<T>[]>(() => {
+    const dynamic = Object.entries(columnTypes).map(([key, def]) => ({
+      accessorKey: key,
+      header: typeof def.label === 'string' ? def.label : key.charAt(0).toUpperCase() + key.slice(1),
+      cell: ({ getValue }: { getValue: () => any }) => {
+        const value = getValue()
+        switch (def.type) {
+          case 'boolean': return value ? '✔️' : '—'
+          case 'image': return value ? (
+            <Image src={value} alt="" width={40} height={40} className="rounded object-contain" />
+          ) : '—'
+          case 'list': return Array.isArray(value) ? (
+            value.map((v: string, i: number) => (
+              <span key={i} className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                {v}
+              </span>
+            ))
+          ) : '—'
+          case 'email': return typeof value === 'string' ? <a href={`mailto:${value}`} className="underline text-blue-600">{value}</a> : '—'
+          case 'phone': return typeof value === 'string' ? <a href={`tel:${value}`} className="underline text-blue-600">{value}</a> : '—'
+          case 'dateTime': {
+            const d = new Date(value)
+            return isNaN(d.getTime()) ? '—' : d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          }
+          default: return value ?? '—'
+        }
+      },
+    }))
+
+    const selectCol: ColumnDef<T> = {
+      id: 'select',
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          className="size-4"
+          checked={table.getIsAllPageRowsSelected()}
+          onChange={(e) => table.toggleAllPageRowsSelected(e.target.checked)}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          className="size-4"
+          checked={row.getIsSelected()}
+          onChange={(e) => row.toggleSelected(e.target.checked)}
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    }
+
+    const actionCol: ColumnDef<T> = {
+      id: 'actions',
+      header: 'Azioni',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="data-[state=open]:bg-muted text-muted-foreground flex size-8"
+            >
+              <IconDotsVertical className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-32">
+            {onView && <DropdownMenuItem onClick={() => onView({ original: row.original })}>Visualizza</DropdownMenuItem>}
+            {onEdit && <DropdownMenuItem onClick={() => onEdit(row)}>Modifica</DropdownMenuItem>}
+            {onDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-red-600 focus:text-red-700" onClick={() => {
+                  setItemsToDelete([row.original])
+                  setDialogOpen(true)
+                }}>
+                  Cancella
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    }
+
+    return [selectCol, ...dynamic, actionCol]
+  }, [columnTypes, onView, onEdit, onDelete])
+
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      columnVisibility,
+      pagination: { pageIndex, pageSize }
+    },
+    onColumnVisibilityChange: setColumnVisibility,
+    onPaginationChange: (updater) => {
+      const next = typeof updater === 'function' ? updater({ pageIndex, pageSize }) : updater
+      onPageChange(next.pageIndex)
+      onPageSizeChange(next.pageSize)
+    },
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    enableRowSelection: true,
+    manualPagination: true, // ✅ FIX FONDAMENTALE
+  })  
+
+  const derivedFilters = filters
+
+  return (
+    <div className="space-y-4">
+
+        <div className="space-y-2 px-4">
+            <div>
+                <h1 className="text-xl font-semibold">{title}</h1>
+            </div>
+
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+
+            <div className="flex flex-wrap items-center gap-2">
+                <Input
+                    type="text"
+                    placeholder="Cerca..."
+                    className="w-[200px]"
+                    value={search}
+                    onChange={(e) => {
+                    onSearchChange(e.target.value)
+                    onPageChange(0)
+                    }}
+                />
+
+                {Object.entries(filters).map(([key, options]) => {
+                const sorted = [...options].sort((a, b) => a.localeCompare(b))
+                const label = columnTypes[key as keyof T]?.label ?? key
+                return (
+                    <DropdownMenu key={key}>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="min-w-[180px] justify-between">
+                        <span className="truncate">
+                            {activeFilters[key]?.length
+                            ? `(${activeFilters[key].length}) selezionat*`
+                            : `Seleziona ${label}`}
+                        </span>
+                        <IconChevronDown className="ml-2 size-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-60 max-h-64 overflow-auto">
+                        {sorted.map((option) => (
+                        <DropdownMenuCheckboxItem
+                            key={option}
+                            checked={activeFilters[key]?.includes(option) ?? false}
+                            onCheckedChange={(checked) => {
+                            const current = activeFilters[key] ?? []
+                            const updated = checked
+                                ? [...current, option]
+                                : current.filter((val) => val !== option)
+                            onFilterChange({
+                                ...activeFilters,
+                                [key]: updated,
+                            })
+                            onPageChange(0)
+                            }}
+                        >
+                            {option}
+                        </DropdownMenuCheckboxItem>
+                        ))}
+                    </DropdownMenuContent>
+                    </DropdownMenu>
+                )
+                })}
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-muted-foreground"
+                    disabled={Object.values(activeFilters).every((arr) => !arr?.length)}
+                    onClick={() => {
+                    onFilterChange({})
+                    onPageChange(0)
+                    }}
+                >
+                    <IconRefresh className="mr-2 size-4" />
+                    Azzera Filtri
+                </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 justify-end">
+                {table.getSelectedRowModel().rows.length > 0 && (
+                    <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    size="sm"
+                    onClick={() => {
+                        const selected = table.getSelectedRowModel().rows.map((r) => r.original)
+                        if (selected.length === 0) return
+                        setItemsToDelete(selected)
+                        setDialogOpen(true)
+                    }}
+                    >
+                    Elimina Selezionate ({table.getSelectedRowModel().rows.length})
+                    </Button>
+                )}
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                        <IconLayoutColumns className="mr-2 size-4" />
+                        Colonne
+                    </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                    {table
+                    .getAllColumns()
+                    .filter((col) => col.getCanHide())
+                    .map((column) => {
+                        const label = columnTypes[column.id as keyof T]?.label ?? column.id
+                        return (
+                        <DropdownMenuCheckboxItem
+                            key={column.id}
+                            checked={column.getIsVisible()}
+                            onCheckedChange={(value) =>
+                            column.toggleVisibility(!!value)
+                            }
+                            className="capitalize"
+                        >
+                            {label}
+                        </DropdownMenuCheckboxItem>
+                        )
+                    })}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                {onAdd && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-black text-white border-black hover:bg-white hover:text-black dark:bg-white dark:text-black dark:border-white dark:hover:bg-black dark:hover:text-white"
+                    onClick={onAdd}
+                >
+                    <IconPlus className="mr-2 size-4" />
+                    Aggiungi
+                </Button>
+                )}
+                </div>
+
+                
+            </div>
+    </div>
+
+      <div className="overflow-hidden rounded-md border mx-4">
+        <Table>
+          <TableHeader className="bg-muted">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    className="capitalize cursor-pointer"
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === 'asc'
+                      ? ' ↑'
+                      : header.column.getIsSorted() === 'desc'
+                      ? ' ↓'
+                      : ''}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length > 0 ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="text-center h-24">
+                  Nessun risultato trovato.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-between px-4">
+        <div className="hidden items-center gap-2 lg:flex">
+          <Label htmlFor="rows-per-page" className="text-sm font-medium">
+            Righe per pagina
+          </Label>
+          <Select
+            value={`${pageSize}`}
+            onValueChange={(value) => onPageSizeChange(Number(value))}
+          >
+            <SelectTrigger id="rows-per-page" className="w-20" size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {[10, 20, 30, 40, 50].map((size) => (
+                <SelectItem key={size} value={`${size}`}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => onPageChange(0)}
+            disabled={pageIndex === 0}
+          >
+            <IconChevronsLeft className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => onPageChange(pageIndex - 1)}
+            disabled={pageIndex === 0}
+          >
+            <IconChevronLeft className="size-4" />
+          </Button>
+          <div className="text-sm font-medium">
+            Pagina {pageIndex + 1} di {pagesCount}
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => onPageChange(pageIndex + 1)}
+            disabled={pageIndex >= pagesCount - 1}
+          >
+            <IconChevronRight className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => onPageChange(pagesCount - 1)}
+            disabled={pageIndex >= pagesCount - 1}
+          >
+            <IconChevronsRight className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      {onDelete && (
+        <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Conferma Eliminazione</AlertDialogTitle>
+              <AlertDialogDescription>
+                Sei sicuro di voler eliminare {itemsToDelete.length} elemento(i)?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annulla</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  onDelete(itemsToDelete)
+                  setDialogOpen(false)
+                  setItemsToDelete([])
+                }}
+              >
+                Elimina
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </div>
+  )
+}
+
+---
+### ./components/view/view-dynamic.tsx
+
+'use client'
+
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Label } from '@/components/ui/label'
+
+export type ViewField = {
+  name: string
+  label: string
+  type?: 'text' | 'image' | 'email' | 'phone' | 'link' | 'list' | 'date'
+}
+
+type ViewDynamicProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title?: string
+  fields: ViewField[]
+  values: Record<string, any>
+}
+
+export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, values }: ViewDynamicProps) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full max-w-xl p-0">
+        <div className="flex flex-col h-full">
+          <SheetHeader className="px-6 pt-6">
+            <SheetTitle>{title}</SheetTitle>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 mb-6">
+            {fields.map((field) => {
+              const value = values?.[field.name]
+              if (value === undefined || value === null || value === '') return null
+
+              return (
+                <div key={field.name} className="space-y-1">
+                  <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                    {field.label}
+                  </Label>
+
+                  {field.type === 'image' ? (
+                    <img
+                      src={value}
+                      alt={field.label}
+                      className="rounded shadow h-40 object-contain"
+                    />
+                  ) : field.type === 'email' ? (
+                    <a href={`mailto:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                      {value}
+                    </a>
+                  ) : field.type === 'phone' ? (
+                    <a href={`tel:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                      {value}
+                    </a>
+                  ) : field.type === 'link' ? (
+                    <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                      {value}
+                    </a>
+                  ) : field.type === 'list' && Array.isArray(value) ? (
+                    <div className="flex flex-wrap gap-1">
+                      {value.map((item: any, i: number) => (
+                        <span
+                          key={i}
+                          className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  ) : field.type === 'date' ? (
+                    <div className="text-sm">
+                      {new Date(value).toLocaleDateString('it-IT', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm whitespace-pre-wrap break-words">{String(value)}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+---
 ### ./components/theme-toggle.tsx
 
 "use client"
@@ -10550,6 +8562,29 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 
+
+---
+### ./lib/utils/view.ts
+
+import type { ViewField } from '@/components/view/view-dynamic'
+
+export function openViewDrawer<T>(
+  setState: React.Dispatch<React.SetStateAction<{
+    open: boolean
+    title: string
+    data: Partial<T>
+  }>>,
+  config: {
+    title: string
+    data: Partial<T>
+  }
+) {
+  setState({
+    open: true,
+    title: config.title,
+    data: config.data,
+  })
+}
 
 ---
 ### ./lib/utils/forms.ts
