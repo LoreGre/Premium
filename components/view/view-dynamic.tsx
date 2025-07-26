@@ -2,6 +2,7 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Label } from '@/components/ui/label'
+import Image from 'next/image'
 
 export type ViewField = {
   name: string
@@ -9,15 +10,23 @@ export type ViewField = {
   type?: 'text' | 'image' | 'email' | 'phone' | 'link' | 'list' | 'date'
 }
 
+type ViewValue = string | number | string[] | Date | null | undefined
+
 type ViewDynamicProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title?: string
   fields: ViewField[]
-  values: Record<string, any>
+  values: Record<string, ViewValue>
 }
 
-export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, values }: ViewDynamicProps) {
+export function ViewDynamic({
+  open,
+  onOpenChange,
+  title = 'Dettagli',
+  fields,
+  values,
+}: ViewDynamicProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-xl p-0">
@@ -37,36 +46,49 @@ export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, va
                     {field.label}
                   </Label>
 
-                  {field.type === 'image' ? (
-                    <img
+                  {field.type === 'image' && typeof value === 'string' ? (
+                    <Image
                       src={value}
                       alt={field.label}
-                      className="rounded shadow h-40 object-contain"
+                      width={300}
+                      height={160}
+                      className="rounded shadow object-contain h-40 w-auto"
                     />
-                  ) : field.type === 'email' ? (
-                    <a href={`mailto:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'email' && typeof value === 'string' ? (
+                    <a
+                      href={`mailto:${value}`}
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
-                  ) : field.type === 'phone' ? (
-                    <a href={`tel:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'phone' && typeof value === 'string' ? (
+                    <a
+                      href={`tel:${value}`}
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
-                  ) : field.type === 'link' ? (
-                    <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'link' && typeof value === 'string' ? (
+                    <a
+                      href={value}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
                   ) : field.type === 'list' ? (
                     <div className="flex flex-wrap gap-1">
-                      {(Array.isArray(value) ? value : String(value).split(',')).map((item: any, i: number) => (
+                      {(Array.isArray(value) ? value : String(value).split(',')).map((item, i) => (
                         <span
                           key={i}
                           className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                         >
-                          {item.trim()}
+                          {item.toString().trim()}
                         </span>
                       ))}
-                    </div>                  
-                  ) : field.type === 'date' ? (
+                    </div>
+                  ) : field.type === 'date' && typeof value === 'string' ? (
                     <div className="text-sm">
                       {new Date(value).toLocaleDateString('it-IT', {
                         day: '2-digit',
@@ -75,7 +97,9 @@ export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, va
                       })}
                     </div>
                   ) : (
-                    <div className="text-sm whitespace-pre-wrap break-words">{String(value)}</div>
+                    <div className="text-sm whitespace-pre-wrap break-words">
+                      {String(value)}
+                    </div>
                   )}
                 </div>
               )

@@ -1,4 +1,4 @@
-# Project Premium snapshot - Gio 24 Lug 2025 17:17:18 CEST
+# Project Premium snapshot - Gio 24 Lug 2025 17:27:40 CEST
 
 ## Directory tree
 
@@ -484,13 +484,6 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProductItem } from '@/components/chat/types'
 
-function cleanProduct(product: any): ProductItem {
-  return {
-    ...product,
-    _id: product._id?.toString?.() ?? undefined,
-  }
-}
-
 export async function GET(req: Request) {
   const auth = await requireAuthUser(req)
   if ('status' in auth) return auth
@@ -503,7 +496,7 @@ export async function GET(req: Request) {
     const chatSessions = await getMongoCollection('chat_sessions')
     const allSessions = await chatSessions
       .find({})
-      .sort({ updatedAt: -1 })
+      .sort({ updatedAt: -1 }) // -1 = ordine decrescente
       .toArray()
 
     logger.info('Sessioni chat caricate', { count: allSessions.length })
@@ -520,7 +513,7 @@ export async function GET(req: Request) {
 
     const usersData = usersList.users.filter(u => userIds.includes(u.id))
 
-    // 3. Recupero tutti i messaggi
+    // 3. Recupero tutti i messaggi una volta sola
     const chatMessages = await getMongoCollection('chat_messages')
     const allMessages = await chatMessages
       .find({ session_id: { $in: allSessions.map(s => new ObjectId(s._id)) } })
@@ -530,14 +523,14 @@ export async function GET(req: Request) {
     // 4. Mappo la risposta
     const sessionsWithDetails = allSessions.map(session => {
       const sessionIdStr = session._id.toString()
-      const sessionMessages = allMessages.filter(
-        msg => msg.session_id?.toString() === sessionIdStr
+      const sessionMessages = allMessages.filter(msg =>
+        msg.session_id.toString() === sessionIdStr
       )
 
       const firstMsg = sessionMessages.find(m => m.role === 'user')
 
       const allProducts: ProductItem[] = sessionMessages
-        .flatMap(msg => (msg.products || []).map(cleanProduct))
+        .flatMap(msg => msg.products || [])
         .filter(p => p?.sku)
 
       const deduped = Object.values(
@@ -5972,12 +5965,7 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
           session_id: msg.session_id.toString(),
           _id: msg._id.toString(),
           _ui_id: `from-db-${msg._id.toString()}`,
-          products: Array.isArray(msg.products)
-            ? msg.products.map((p) => ({
-                ...p,
-              }))
-            : undefined
-        }))        
+        }))
   
         setMessages(uiMessages)
       } catch (err) {
@@ -6530,6 +6518,14 @@ import { extractEntitiesLLM } from './chat-exctract-entities'
 import { logger } from '@/lib/logger'
 
 
+function cleanMongoObject(obj: any): any {
+  return JSON.parse(JSON.stringify(obj, (key, value) => {
+    if (value && typeof value === 'object' && value._bsontype === 'ObjectID') {
+      return value.toString()
+    }
+    return value
+  }))
+}
 // ===============================
 // 1. SESSIONI CHAT
 // ===============================
@@ -6614,7 +6610,7 @@ export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
     .limit(limit)
     .toArray()
 
-    return history.reverse() // ✅ restituisce ChatMessage[]
+  return history.reverse().map(cleanMongoObject) // ✅ fix qui
 }
 
 

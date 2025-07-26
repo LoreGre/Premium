@@ -1,5 +1,3 @@
-import type { ViewField } from '@/components/view/view-dynamic'
-
 export function openViewDrawer<T>(
   setState: React.Dispatch<React.SetStateAction<{
     open: boolean

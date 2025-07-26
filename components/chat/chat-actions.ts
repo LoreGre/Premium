@@ -1,12 +1,22 @@
 'use server'
 
 import { ObjectId } from 'mongodb'
+import type { Filter } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession, ChatContext, ExtractedEntity } from './types'
 import { extractEntitiesLLM } from './chat-exctract-entities'
 import { logger } from '@/lib/logger'
 
+
+function cleanMongoObject<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj, (key, value) => {
+    if (value && typeof value === 'object' && value._bsontype === 'ObjectID') {
+      return value.toString()
+    }
+    return value
+  }))
+}
 
 // ===============================
 // 1. SESSIONI CHAT
@@ -92,7 +102,7 @@ export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
     .limit(limit)
     .toArray()
 
-    return history.reverse() // ✅ restituisce ChatMessage[]
+  return history.reverse().map(cleanMongoObject) // ✅ fix qui
 }
 
 
@@ -386,22 +396,23 @@ export async function getProductsByEntitiesAI(
   maxResults = 10
 ): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
   const entities = await extractEntitiesLLM(message)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: Record<string, any> = {}
+ 
+  const query: Filter<ProductItem> = {}
 
-
-  const safeEntities = Array.isArray(entities) ? entities : [];
-  for (const e of safeEntities) {  
-    if (e.type === 'sku') {
+  const safeEntities = Array.isArray(entities) ? entities : []
+  for (const e of safeEntities) {
+    if (e.type === 'sku' && typeof e.value === 'string') {
       if (!query.sku) query.sku = { $in: [] }
-      query.sku.$in.push(e.value)
+      ;(query.sku as { $in: string[] }).$in.push(e.value)
     }
-    if (e.type === 'quantity') query.qty = { $gte: Number(e.value) }
-    if (e.type === 'color') query.colore = e.value
-    if (e.type === 'size') query.size = e.value
-    if (e.type === 'category') query.category_name = e.value
-    if (e.type === 'supplier') query.supplier = e.value
-    // puoi aggiungere qui altri tipi di entità, sempre usando il tuo ExtractedEntity
+    if (e.type === 'quantity') {
+      const n = Number(e.value)
+      if (!isNaN(n)) query.qty = { $gte: n }
+    }
+    if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
+    if (e.type === 'size' && typeof e.value === 'string') query.size = e.value
+    if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
+    if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
   }
 
   let products: ProductItem[] = []

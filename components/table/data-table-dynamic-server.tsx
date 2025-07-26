@@ -7,6 +7,7 @@ import {
   getPaginationRowModel,
   useReactTable,
   ColumnDef,
+  CellContext,
   VisibilityState,
   Row,
 } from '@tanstack/react-table'
@@ -70,13 +71,13 @@ export type ColumnType =
   | 'list'
   | 'dateTime'
 
-export type ColumnDefinition<T> = {
-  type: ColumnType
-  label?: string
-  flags?: ('filter')[]
-}
+  export type ColumnDefinition = {
+    type: ColumnType
+    label?: string
+    flags?: ('filter')[]
+  }
 
-export interface DataTableDynamicServerProps<T extends Record<string, any>> {
+export interface DataTableDynamicServerProps<T extends Record<string, unknown>> {
   title: string
   data: T[]
   total: number
@@ -90,14 +91,14 @@ export interface DataTableDynamicServerProps<T extends Record<string, any>> {
   activeFilters: Record<string, string[]>
   onFilterChange: (filters: Record<string, string[]>) => void
   onResetFilters?: () => void
-  columnTypes: Record<keyof T, ColumnDefinition<T>>
+  columnTypes: Record<keyof T, ColumnDefinition>
   onAdd?: () => void
   onEdit?: (row: Row<T>) => void
   onDelete?: (items: T[]) => void
   onView?: (row: { original: T }) => void
 }
 
-export function DataTableDynamicServer<T extends Record<string, any>>({
+export function DataTableDynamicServer<T extends Record<string, unknown>>({
   title,
   data,
   total,
@@ -122,36 +123,76 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   const [itemsToDelete, setItemsToDelete] = React.useState<T[]>([])
   const [dialogOpen, setDialogOpen] = React.useState(false)
 
-
-
   const columns = React.useMemo<ColumnDef<T>[]>(() => {
     const dynamic = Object.entries(columnTypes).map(([key, def]) => ({
       accessorKey: key,
-      header: typeof def.label === 'string' ? def.label : key.charAt(0).toUpperCase() + key.slice(1),
-      cell: ({ getValue }: { getValue: () => any }) => {
-        const value = getValue()
+      header:
+        typeof def.label === 'string'
+          ? def.label
+          : key.charAt(0).toUpperCase() + key.slice(1),
+      cell: (cell: CellContext<T, unknown>) => {
+        const value = cell.getValue()
         switch (def.type) {
-          case 'boolean': return value ? '✔️' : '—'
-          case 'image': return value ? (
-            <Image src={value} alt="" width={40} height={40} className="rounded object-contain" />
-          ) : '—'
-          case 'list': return Array.isArray(value) ? (
-            value.map((v: string, i: number) => (
-              <span key={i} className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {v}
-              </span>
-            ))
-          ) : '—'
-          case 'email': return typeof value === 'string' ? <a href={`mailto:${value}`} className="underline text-blue-600">{value}</a> : '—'
-          case 'phone': return typeof value === 'string' ? <a href={`tel:${value}`} className="underline text-blue-600">{value}</a> : '—'
+          case 'boolean':
+            return value ? '✔️' : '—'
+          case 'image':
+            return typeof value === 'string' ? (
+              <Image
+                src={value}
+                alt=""
+                width={40}
+                height={40}
+                className="rounded object-contain"
+              />
+            ) : (
+              '—'
+            )
+          case 'list':
+            return Array.isArray(value) ? (
+              value.map((v: string, i: number) => (
+                <span
+                  key={i}
+                  className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  {v}
+                </span>
+              ))
+            ) : (
+              '—'
+            )
+          case 'email':
+            return typeof value === 'string' ? (
+              <a href={`mailto:${value}`} className="underline text-blue-600">
+                {value}
+              </a>
+            ) : (
+              '—'
+            )
+          case 'phone':
+            return typeof value === 'string' ? (
+              <a href={`tel:${value}`} className="underline text-blue-600">
+                {value}
+              </a>
+            ) : (
+              '—'
+            )
           case 'dateTime': {
-            const d = new Date(value)
-            return isNaN(d.getTime()) ? '—' : d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            const d = new Date(value as string)
+            return isNaN(d.getTime())
+              ? '—'
+              : d.toLocaleString('it-IT', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
           }
-          default: return value ?? '—'
+          default:
+            return value ?? '—'
         }
       },
-    }))
+    }))  
 
     const selectCol: ColumnDef<T> = {
       id: 'select',
@@ -231,8 +272,6 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
     enableRowSelection: true,
     manualPagination: true, // ✅ FIX FONDAMENTALE
   })  
-
-  const derivedFilters = filters
 
   return (
     <div className="space-y-4">

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as SearchProductsParams
 
     const result = await searchProductsPaginated({
-      search: body.search || '', // ✅ corretto: usiamo `search`
+      search: body.search || '',
       limit: body.limit || 50,
       offset: body.offset || 0,
       sortBy: body.sortBy,
@@ -55,8 +55,9 @@ export async function DELETE(req: Request) {
     console.log(`🗑️ Eliminati ${result.deletedCount} prodotti`)
 
     return NextResponse.json({ success: true, deleted: result.deletedCount })
-  } catch (err: any) {
-    console.error('❌ Errore /api/prodotti [DELETE]:', err.message ?? err)
-    return NextResponse.json({ error: err.message ?? 'Errore durante eliminazione di prodotti' }, { status: 500 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Errore durante eliminazione di prodotti'
+    console.error('❌ Errore /api/prodotti [DELETE]:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

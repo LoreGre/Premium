@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
@@ -21,7 +21,7 @@ export type ProductItem = {
   colore?: string
 }
 
-const columnTypes: Record<keyof ProductItem, ColumnDefinition<ProductItem>> = {
+const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   sku:           { type: 'string' },
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
@@ -83,7 +83,7 @@ export default function ProdottiPage() {
     return () => clearTimeout(timeout)
   }, [search])
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetchProducts({
@@ -100,15 +100,15 @@ export default function ProdottiPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
 
   useEffect(() => {
     fetchData()
-  }, [debouncedSearch, activeFilters, pageIndex, pageSize])  
+  }, [fetchData])  
 
   const handleResetAll = () => {
     setSearch('')
-    setDebouncedSearch('') // immediato
+    setDebouncedSearch('')
     setActiveFilters({})
     setPageIndex(0)
   }
@@ -168,9 +168,10 @@ export default function ProdottiPage() {
               await deleteProducts(skus)
               await fetchData()
               success('Eliminazione completata')
-            } catch (err: any) {
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Errore eliminazione'
               console.error(err)
-              errorRef.current?.('Errore', err.message ?? 'Errore eliminazione')
+              errorRef.current?.('Errore', message)
             }
           }}
         />
