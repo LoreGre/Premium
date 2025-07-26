@@ -41,7 +41,10 @@ export async function searchProductsPaginated({
         text: {
           query,
           path: ['sku', 'name', 'description', 'category_name', 'colore'],
-          fuzzy: { maxEdits: 2 }
+          fuzzy: {
+            maxEdits: 1,
+            prefixLength: 2
+          }
         }
       }
     })
