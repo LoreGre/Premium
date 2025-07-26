@@ -1,4 +1,4 @@
-# Project Premium snapshot - Sab 26 Lug 2025 12:15:54 CEST
+# Project Premium snapshot - Sab 26 Lug 2025 14:21:01 CEST
 
 ## Directory tree
 
@@ -259,14 +259,16 @@ export async function GET(req: NextRequest) {
   try {
     const prodotti = await getMongoCollection('prodotti')
 
-    const [categorie, colori] = await Promise.all([
+    const [categorie, colori, taglie] = await Promise.all([
       prodotti.distinct('category_name'),
-      prodotti.distinct('colore')
+      prodotti.distinct('colore'),
+      prodotti.distinct('taglia')
     ])
 
     return NextResponse.json({
       category_name: categorie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
       colore: colori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
+      taglia: taglie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(), // ✅ aggiunto
     })
   } catch (err) {
     console.error('Errore fetch filters:', err)
@@ -1162,6 +1164,7 @@ export type ProductItem = {
   category_name?: string
   thumbnail: string
   colore?: string
+  taglia?: string // ✅ aggiunto
 }
 
 const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
@@ -1173,6 +1176,7 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
+  taglia:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
 }
 
 const fetchFilters = async (): Promise<Record<string, string[]>> => {
@@ -1264,6 +1268,7 @@ export default function ProdottiPage() {
     { name: 'source', label: 'Fornitore', type: 'text' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
+    { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto
     { name: 'link', label: 'Link', type: 'link' },
     { name: 'thumbnail', label: 'Immagine', type: 'image' },
   ]
@@ -6279,8 +6284,17 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.source}
                       </p>
-                      <p className="text-xs mt-1 text-green-600">
-                        {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
+
+                      {product.taglia && (
+                        <p className="text-xs text-muted-foreground">
+                          Taglia: <span className="font-medium">{product.taglia}</span>
+                        </p>
+                      )}
+                      <p className={cn(
+                        "text-xs mt-1 font-medium",
+                        (product.qty ?? 0) > 0 ? "text-green-600" : "text-red-600"
+                      )}>
+                        ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
                       {reasons[product.sku] && (
                         <p className="text-xs mt-1 text-blue-700 italic">
@@ -6438,6 +6452,7 @@ export type ProductItem = {
   thumbnail: string
   link?: string
   colore?: string
+  taglia?: string
   score?: number
 }
 
@@ -6653,6 +6668,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         thumbnail: 1,
         link: 1,
         colore: 1,
+        taglia: 1,
         score: { $meta: 'vectorSearchScore' }
       }
     }
@@ -6689,6 +6705,7 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         thumbnail: 1,
         link: 1,
         colore: 1,
+        taglia: 1,
         score: { $meta: 'searchScore' }
       }
     }
@@ -6924,7 +6941,7 @@ export async function getProductsByEntitiesAI(
       if (!isNaN(n)) query.qty = { $gte: n }
     }
     if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
-    if (e.type === 'size' && typeof e.value === 'string') query.size = e.value
+    if (e.type === 'size' && typeof e.value === 'string') query.taglia = e.value
     if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
     if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
   }

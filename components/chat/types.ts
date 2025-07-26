@@ -12,6 +12,7 @@ export type ProductItem = {
   thumbnail: string
   link?: string
   colore?: string
+  taglia?: string
   score?: number
 }
 

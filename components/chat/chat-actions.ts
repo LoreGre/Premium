@@ -137,6 +137,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         thumbnail: 1,
         link: 1,
         colore: 1,
+        taglia: 1,
         score: { $meta: 'vectorSearchScore' }
       }
     }
@@ -173,6 +174,7 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         thumbnail: 1,
         link: 1,
         colore: 1,
+        taglia: 1,
         score: { $meta: 'searchScore' }
       }
     }
@@ -408,7 +410,7 @@ export async function getProductsByEntitiesAI(
       if (!isNaN(n)) query.qty = { $gte: n }
     }
     if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
-    if (e.type === 'size' && typeof e.value === 'string') query.size = e.value
+    if (e.type === 'size' && typeof e.value === 'string') query.taglia = e.value
     if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
     if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
   }

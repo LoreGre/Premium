@@ -19,6 +19,7 @@ export type ProductItem = {
   category_name?: string
   thumbnail: string
   colore?: string
+  taglia?: string // ✅ aggiunto
 }
 
 const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
@@ -30,6 +31,7 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
+  taglia:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
 }
 
 const fetchFilters = async (): Promise<Record<string, string[]>> => {
@@ -121,6 +123,7 @@ export default function ProdottiPage() {
     { name: 'source', label: 'Fornitore', type: 'text' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
+    { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto
     { name: 'link', label: 'Link', type: 'link' },
     { name: 'thumbnail', label: 'Immagine', type: 'image' },
   ]

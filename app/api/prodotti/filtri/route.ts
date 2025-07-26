@@ -9,14 +9,16 @@ export async function GET(req: NextRequest) {
   try {
     const prodotti = await getMongoCollection('prodotti')
 
-    const [categorie, colori] = await Promise.all([
+    const [categorie, colori, taglie] = await Promise.all([
       prodotti.distinct('category_name'),
-      prodotti.distinct('colore')
+      prodotti.distinct('colore'),
+      prodotti.distinct('taglia')
     ])
 
     return NextResponse.json({
       category_name: categorie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
       colore: colori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
+      taglia: taglie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(), // ✅ aggiunto
     })
   } catch (err) {
     console.error('Errore fetch filters:', err)

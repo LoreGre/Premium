@@ -70,7 +70,8 @@ export async function searchProductsPaginated({
             category_name: 1,
             thumbnail: 1,
             link: 1,
-            colore: 1
+            colore: 1,
+            taglia: 1
           }
         }
       ],
