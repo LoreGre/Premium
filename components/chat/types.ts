@@ -5,10 +5,9 @@ export type ProductItem = {
   sku: string
   name: string
   description: string
-  price: number
-  available: boolean
+  unit_price: number
   qty?: number
-  supplier: string
+  source: string
   category_name?: string
   thumbnail: string
   link?: string

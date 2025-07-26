@@ -105,6 +105,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
+              console.log('Product:', product),
               <div
                 key={product.sku}
                 title={`SKU: ${product.sku}`}
@@ -122,10 +123,13 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                     <div className="flex-1">
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {(product.price ?? 0).toFixed(2)} € · {product.supplier}
+                        {(product.unit_price ?? 0).toFixed(2)} € · {product.source}
                       </p>
-                      <p className="text-xs mt-1 text-green-600">
-                        {product.available ? 'Disponibile' : 'Non disponibile'}
+                      <p className={cn(
+                        "text-xs mt-1 font-medium",
+                        (product.qty ?? 0) > 0 ? "text-green-600" : "text-red-600"
+                      )}>
+                        ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
                       {reasons[product.sku] && (
                         <p className="text-xs mt-1 text-blue-700 italic">

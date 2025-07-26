@@ -130,10 +130,9 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         sku: 1,
         name: 1,
         description: 1,
-        price: 1,
+        unit_price: 1,
         qty: 1,
-        available: 1,
-        supplier: 1,
+        source: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -167,10 +166,9 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         sku: 1,
         name: 1,
         description: 1,
-        price: 1,
+        unit_price: 1,
         qty: 1,
-        available: 1,
-        supplier: 1,
+        source: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -267,7 +265,7 @@ ${contextMessages?.length
 }
 🔸 PRODUCT_CONTEXT:
 ${products.map((p) =>
-  `- ${p.name} (${p.price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
+  `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
 
 🔸 CONSTRAINTS:
 - Suggerisci massimo 4 prodotti

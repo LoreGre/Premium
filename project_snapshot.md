@@ -1,4 +1,4 @@
-# Project Premium snapshot - Gio 24 Lug 2025 17:27:40 CEST
+# Project Premium snapshot - Sab 26 Lug 2025 12:15:54 CEST
 
 ## Directory tree
 
@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as SearchProductsParams
 
     const result = await searchProductsPaginated({
-      search: body.search || '', // ✅ corretto: usiamo `search`
+      search: body.search || '',
       limit: body.limit || 50,
       offset: body.offset || 0,
       sortBy: body.sortBy,
@@ -334,9 +334,10 @@ export async function DELETE(req: Request) {
     console.log(`🗑️ Eliminati ${result.deletedCount} prodotti`)
 
     return NextResponse.json({ success: true, deleted: result.deletedCount })
-  } catch (err: any) {
-    console.error('❌ Errore /api/prodotti [DELETE]:', err.message ?? err)
-    return NextResponse.json({ error: err.message ?? 'Errore durante eliminazione di prodotti' }, { status: 500 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Errore durante eliminazione di prodotti'
+    console.error('❌ Errore /api/prodotti [DELETE]:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
@@ -1142,7 +1143,7 @@ export async function deleteProducts(skus: string[]): Promise<void> {
 
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { fetchProducts, deleteProducts } from './actions'
 import { useNotify } from '@/hooks/use-notify'
 import { DataTableDynamicServer } from '@/components/table/data-table-dynamic-server'
@@ -1163,7 +1164,7 @@ export type ProductItem = {
   colore?: string
 }
 
-const columnTypes: Record<keyof ProductItem, ColumnDefinition<ProductItem>> = {
+const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   sku:           { type: 'string' },
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
@@ -1225,7 +1226,7 @@ export default function ProdottiPage() {
     return () => clearTimeout(timeout)
   }, [search])
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetchProducts({
@@ -1242,15 +1243,15 @@ export default function ProdottiPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [debouncedSearch, activeFilters, pageIndex, pageSize])
 
   useEffect(() => {
     fetchData()
-  }, [debouncedSearch, activeFilters, pageIndex, pageSize])  
+  }, [fetchData])  
 
   const handleResetAll = () => {
     setSearch('')
-    setDebouncedSearch('') // immediato
+    setDebouncedSearch('')
     setActiveFilters({})
     setPageIndex(0)
   }
@@ -1310,9 +1311,10 @@ export default function ProdottiPage() {
               await deleteProducts(skus)
               await fetchData()
               success('Eliminazione completata')
-            } catch (err: any) {
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Errore eliminazione'
               console.error(err)
-              errorRef.current?.('Errore', err.message ?? 'Errore eliminazione')
+              errorRef.current?.('Errore', message)
             }
           }}
         />
@@ -1328,6 +1330,7 @@ export default function ProdottiPage() {
     </main>
   )
 }
+
 ---
 ### ./app/(dashboard)/fornitori/actions.ts
 
@@ -5355,7 +5358,10 @@ export async function searchProductsPaginated({
         text: {
           query,
           path: ['sku', 'name', 'description', 'category_name', 'colore'],
-          fuzzy: { maxEdits: 2 }
+          fuzzy: {
+            maxEdits: 1,
+            prefixLength: 2
+          }
         }
       }
     })
@@ -6253,6 +6259,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
+              console.log('Product:', product),
               <div
                 key={product.sku}
                 title={`SKU: ${product.sku}`}
@@ -6270,10 +6277,10 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                     <div className="flex-1">
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {(product.price ?? 0).toFixed(2)} € · {product.supplier}
+                        {(product.unit_price ?? 0).toFixed(2)} € · {product.source}
                       </p>
                       <p className="text-xs mt-1 text-green-600">
-                        {product.available ? 'Disponibile' : 'Non disponibile'}
+                        {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
                       {reasons[product.sku] && (
                         <p className="text-xs mt-1 text-blue-700 italic">
@@ -6424,10 +6431,9 @@ export type ProductItem = {
   sku: string
   name: string
   description: string
-  price: number
-  available: boolean
+  unit_price: number
   qty?: number
-  supplier: string
+  source: string
   category_name?: string
   thumbnail: string
   link?: string
@@ -6511,6 +6517,7 @@ export type ChatApiResponse = {
 'use server'
 
 import { ObjectId } from 'mongodb'
+import type { Filter } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
 import { OpenAI } from 'openai'
 import type { ProductItem, ChatAIResponse, ChatMessage, ChatSession, ChatContext, ExtractedEntity } from './types'
@@ -6518,7 +6525,7 @@ import { extractEntitiesLLM } from './chat-exctract-entities'
 import { logger } from '@/lib/logger'
 
 
-function cleanMongoObject(obj: any): any {
+function cleanMongoObject<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj, (key, value) => {
     if (value && typeof value === 'object' && value._bsontype === 'ObjectID') {
       return value.toString()
@@ -6526,6 +6533,7 @@ function cleanMongoObject(obj: any): any {
     return value
   }))
 }
+
 // ===============================
 // 1. SESSIONI CHAT
 // ===============================
@@ -6638,10 +6646,9 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         sku: 1,
         name: 1,
         description: 1,
-        price: 1,
+        unit_price: 1,
         qty: 1,
-        available: 1,
-        supplier: 1,
+        source: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -6675,10 +6682,9 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         sku: 1,
         name: 1,
         description: 1,
-        price: 1,
+        unit_price: 1,
         qty: 1,
-        available: 1,
-        supplier: 1,
+        source: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -6775,7 +6781,7 @@ ${contextMessages?.length
 }
 🔸 PRODUCT_CONTEXT:
 ${products.map((p) =>
-  `- ${p.name} (${p.price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
+  `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
 
 🔸 CONSTRAINTS:
 - Suggerisci massimo 4 prodotti
@@ -6904,22 +6910,23 @@ export async function getProductsByEntitiesAI(
   maxResults = 10
 ): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
   const entities = await extractEntitiesLLM(message)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: Record<string, any> = {}
+ 
+  const query: Filter<ProductItem> = {}
 
-
-  const safeEntities = Array.isArray(entities) ? entities : [];
-  for (const e of safeEntities) {  
-    if (e.type === 'sku') {
+  const safeEntities = Array.isArray(entities) ? entities : []
+  for (const e of safeEntities) {
+    if (e.type === 'sku' && typeof e.value === 'string') {
       if (!query.sku) query.sku = { $in: [] }
-      query.sku.$in.push(e.value)
+      ;(query.sku as { $in: string[] }).$in.push(e.value)
     }
-    if (e.type === 'quantity') query.qty = { $gte: Number(e.value) }
-    if (e.type === 'color') query.colore = e.value
-    if (e.type === 'size') query.size = e.value
-    if (e.type === 'category') query.category_name = e.value
-    if (e.type === 'supplier') query.supplier = e.value
-    // puoi aggiungere qui altri tipi di entità, sempre usando il tuo ExtractedEntity
+    if (e.type === 'quantity') {
+      const n = Number(e.value)
+      if (!isNaN(n)) query.qty = { $gte: n }
+    }
+    if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
+    if (e.type === 'size' && typeof e.value === 'string') query.size = e.value
+    if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
+    if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
   }
 
   let products: ProductItem[] = []
@@ -7846,6 +7853,7 @@ import {
   getPaginationRowModel,
   useReactTable,
   ColumnDef,
+  CellContext,
   VisibilityState,
   Row,
 } from '@tanstack/react-table'
@@ -7909,13 +7917,13 @@ export type ColumnType =
   | 'list'
   | 'dateTime'
 
-export type ColumnDefinition<T> = {
-  type: ColumnType
-  label?: string
-  flags?: ('filter')[]
-}
+  export type ColumnDefinition = {
+    type: ColumnType
+    label?: string
+    flags?: ('filter')[]
+  }
 
-export interface DataTableDynamicServerProps<T extends Record<string, any>> {
+export interface DataTableDynamicServerProps<T extends Record<string, unknown>> {
   title: string
   data: T[]
   total: number
@@ -7929,14 +7937,14 @@ export interface DataTableDynamicServerProps<T extends Record<string, any>> {
   activeFilters: Record<string, string[]>
   onFilterChange: (filters: Record<string, string[]>) => void
   onResetFilters?: () => void
-  columnTypes: Record<keyof T, ColumnDefinition<T>>
+  columnTypes: Record<keyof T, ColumnDefinition>
   onAdd?: () => void
   onEdit?: (row: Row<T>) => void
   onDelete?: (items: T[]) => void
   onView?: (row: { original: T }) => void
 }
 
-export function DataTableDynamicServer<T extends Record<string, any>>({
+export function DataTableDynamicServer<T extends Record<string, unknown>>({
   title,
   data,
   total,
@@ -7961,36 +7969,76 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
   const [itemsToDelete, setItemsToDelete] = React.useState<T[]>([])
   const [dialogOpen, setDialogOpen] = React.useState(false)
 
-
-
   const columns = React.useMemo<ColumnDef<T>[]>(() => {
     const dynamic = Object.entries(columnTypes).map(([key, def]) => ({
       accessorKey: key,
-      header: typeof def.label === 'string' ? def.label : key.charAt(0).toUpperCase() + key.slice(1),
-      cell: ({ getValue }: { getValue: () => any }) => {
-        const value = getValue()
+      header:
+        typeof def.label === 'string'
+          ? def.label
+          : key.charAt(0).toUpperCase() + key.slice(1),
+      cell: (cell: CellContext<T, unknown>) => {
+        const value = cell.getValue()
         switch (def.type) {
-          case 'boolean': return value ? '✔️' : '—'
-          case 'image': return value ? (
-            <Image src={value} alt="" width={40} height={40} className="rounded object-contain" />
-          ) : '—'
-          case 'list': return Array.isArray(value) ? (
-            value.map((v: string, i: number) => (
-              <span key={i} className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {v}
-              </span>
-            ))
-          ) : '—'
-          case 'email': return typeof value === 'string' ? <a href={`mailto:${value}`} className="underline text-blue-600">{value}</a> : '—'
-          case 'phone': return typeof value === 'string' ? <a href={`tel:${value}`} className="underline text-blue-600">{value}</a> : '—'
+          case 'boolean':
+            return value ? '✔️' : '—'
+          case 'image':
+            return typeof value === 'string' ? (
+              <Image
+                src={value}
+                alt=""
+                width={40}
+                height={40}
+                className="rounded object-contain"
+              />
+            ) : (
+              '—'
+            )
+          case 'list':
+            return Array.isArray(value) ? (
+              value.map((v: string, i: number) => (
+                <span
+                  key={i}
+                  className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  {v}
+                </span>
+              ))
+            ) : (
+              '—'
+            )
+          case 'email':
+            return typeof value === 'string' ? (
+              <a href={`mailto:${value}`} className="underline text-blue-600">
+                {value}
+              </a>
+            ) : (
+              '—'
+            )
+          case 'phone':
+            return typeof value === 'string' ? (
+              <a href={`tel:${value}`} className="underline text-blue-600">
+                {value}
+              </a>
+            ) : (
+              '—'
+            )
           case 'dateTime': {
-            const d = new Date(value)
-            return isNaN(d.getTime()) ? '—' : d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            const d = new Date(value as string)
+            return isNaN(d.getTime())
+              ? '—'
+              : d.toLocaleString('it-IT', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
           }
-          default: return value ?? '—'
+          default:
+            return value ?? '—'
         }
       },
-    }))
+    }))  
 
     const selectCol: ColumnDef<T> = {
       id: 'select',
@@ -8070,8 +8118,6 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
     enableRowSelection: true,
     manualPagination: true, // ✅ FIX FONDAMENTALE
   })  
-
-  const derivedFilters = filters
 
   return (
     <div className="space-y-4">
@@ -8375,6 +8421,7 @@ export function DataTableDynamicServer<T extends Record<string, any>>({
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Label } from '@/components/ui/label'
+import Image from 'next/image'
 
 export type ViewField = {
   name: string
@@ -8382,15 +8429,23 @@ export type ViewField = {
   type?: 'text' | 'image' | 'email' | 'phone' | 'link' | 'list' | 'date'
 }
 
+type ViewValue = string | number | string[] | Date | null | undefined
+
 type ViewDynamicProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title?: string
   fields: ViewField[]
-  values: Record<string, any>
+  values: Record<string, ViewValue>
 }
 
-export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, values }: ViewDynamicProps) {
+export function ViewDynamic({
+  open,
+  onOpenChange,
+  title = 'Dettagli',
+  fields,
+  values,
+}: ViewDynamicProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-xl p-0">
@@ -8410,36 +8465,49 @@ export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, va
                     {field.label}
                   </Label>
 
-                  {field.type === 'image' ? (
-                    <img
+                  {field.type === 'image' && typeof value === 'string' ? (
+                    <Image
                       src={value}
                       alt={field.label}
-                      className="rounded shadow h-40 object-contain"
+                      width={300}
+                      height={160}
+                      className="rounded shadow object-contain h-40 w-auto"
                     />
-                  ) : field.type === 'email' ? (
-                    <a href={`mailto:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'email' && typeof value === 'string' ? (
+                    <a
+                      href={`mailto:${value}`}
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
-                  ) : field.type === 'phone' ? (
-                    <a href={`tel:${value}`} className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'phone' && typeof value === 'string' ? (
+                    <a
+                      href={`tel:${value}`}
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
-                  ) : field.type === 'link' ? (
-                    <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+                  ) : field.type === 'link' && typeof value === 'string' ? (
+                    <a
+                      href={value}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
                       {value}
                     </a>
                   ) : field.type === 'list' ? (
                     <div className="flex flex-wrap gap-1">
-                      {(Array.isArray(value) ? value : String(value).split(',')).map((item: any, i: number) => (
+                      {(Array.isArray(value) ? value : String(value).split(',')).map((item, i) => (
                         <span
                           key={i}
                           className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                         >
-                          {item.trim()}
+                          {item.toString().trim()}
                         </span>
                       ))}
-                    </div>                  
-                  ) : field.type === 'date' ? (
+                    </div>
+                  ) : field.type === 'date' && typeof value === 'string' ? (
                     <div className="text-sm">
                       {new Date(value).toLocaleDateString('it-IT', {
                         day: '2-digit',
@@ -8448,7 +8516,9 @@ export function ViewDynamic({ open, onOpenChange, title = 'Dettagli', fields, va
                       })}
                     </div>
                   ) : (
-                    <div className="text-sm whitespace-pre-wrap break-words">{String(value)}</div>
+                    <div className="text-sm whitespace-pre-wrap break-words">
+                      {String(value)}
+                    </div>
                   )}
                 </div>
               )
@@ -8603,8 +8673,6 @@ export function cn(...inputs: ClassValue[]) {
 
 ---
 ### ./lib/utils/view.ts
-
-import type { ViewField } from '@/components/view/view-dynamic'
 
 export function openViewDrawer<T>(
   setState: React.Dispatch<React.SetStateAction<{
