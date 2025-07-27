@@ -1,4 +1,4 @@
-# Project Premium snapshot - Sab 26 Lug 2025 14:21:01 CEST
+# Project Premium snapshot - Dom 27 Lug 2025 21:05:44 CEST
 
 ## Directory tree
 
@@ -136,6 +136,8 @@
 │   │   ├── admin.ts
 │   │   ├── client.ts
 │   │   └── server.ts
+│   ├── types
+│   │   └── prodotto.ts
 │   ├── utils
 │   │   ├── forms.ts
 │   │   └── view.ts
@@ -159,7 +161,7 @@
 ├── tsconfig.json
 └── update-env.sh
 
-40 directories, 116 files
+41 directories, 117 files
 
 ## File list & contents (.ts/.tsx only)
 
@@ -259,13 +261,15 @@ export async function GET(req: NextRequest) {
   try {
     const prodotti = await getMongoCollection('prodotti')
 
-    const [categorie, colori, taglie] = await Promise.all([
+    const [fornitori, categorie, colori, taglie] = await Promise.all([
+      prodotti.distinct('source'),
       prodotti.distinct('category_name'),
       prodotti.distinct('colore'),
       prodotti.distinct('taglia')
     ])
 
     return NextResponse.json({
+      source: fornitori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
       category_name: categorie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
       colore: colori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
       taglia: taglie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(), // ✅ aggiunto
@@ -1172,7 +1176,7 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:        { type: 'string', label: 'Fornitore' },
+  source:        { type: 'string', label: 'Fornitore', flags: ['filter'] },
   category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
@@ -1265,7 +1269,7 @@ export default function ProdottiPage() {
     { name: 'name', label: 'Nome', type: 'text' },
     { name: 'unit_price', label: 'Prezzo', type: 'text' },
     { name: 'qty', label: 'Quantità', type: 'text' },
-    { name: 'source', label: 'Fornitore', type: 'text' },
+    { name: 'source', label: 'Fornitore', type: 'list' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
     { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto
@@ -5392,7 +5396,8 @@ export async function searchProductsPaginated({
             category_name: 1,
             thumbnail: 1,
             link: 1,
-            colore: 1
+            colore: 1,
+            taglia: 1
           }
         }
       ],
@@ -8628,6 +8633,31 @@ export function useIsMobile() {
 }
 
 ---
+### ./lib/types/prodotto.ts
+
+// lib/types/prodotto.ts
+
+export type ProdottoMongo = {
+    sku: string
+    name: string
+    description: string
+    unit_price: number
+    qty: number
+    source: string
+    category_name: string
+  
+    // UI & AI
+    thumbnail?: string
+    link: string
+    colore?: string
+    taglia?: string
+  
+    // AI & versioning
+    content_hash?: string
+    embedding?: number[]
+  
+  }
+---
 ### ./lib/auth/requireAuthUser.ts
 
 import { NextResponse } from 'next/server'
@@ -9446,6 +9476,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'www.silanpromozioni.com',
+        pathname: '/**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn1.midocean.com',
         pathname: '/**'
       }
     ]

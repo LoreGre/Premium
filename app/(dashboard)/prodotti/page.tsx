@@ -27,7 +27,7 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:        { type: 'string', label: 'Fornitore' },
+  source:        { type: 'string', label: 'Fornitore', flags: ['filter'] },
   category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
@@ -120,7 +120,7 @@ export default function ProdottiPage() {
     { name: 'name', label: 'Nome', type: 'text' },
     { name: 'unit_price', label: 'Prezzo', type: 'text' },
     { name: 'qty', label: 'Quantità', type: 'text' },
-    { name: 'source', label: 'Fornitore', type: 'text' },
+    { name: 'source', label: 'Fornitore', type: 'list' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
     { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto

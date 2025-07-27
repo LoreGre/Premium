@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'www.silanpromozioni.com',
         pathname: '/**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn1.midocean.com',
+        pathname: '/**'
       }
     ]
   },
