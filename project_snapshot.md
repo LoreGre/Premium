@@ -1,4 +1,4 @@
-# Project Premium snapshot - Dom 27 Lug 2025 21:05:44 CEST
+# Project Premium snapshot - Mar 29 Lug 2025 15:08:52 CEST
 
 ## Directory tree
 
@@ -261,25 +261,37 @@ export async function GET(req: NextRequest) {
   try {
     const prodotti = await getMongoCollection('prodotti')
 
-    const [fornitori, categorie, colori, taglie] = await Promise.all([
-      prodotti.distinct('source'),
-      prodotti.distinct('category_name'),
+    // Tipizziamo esplicitamente Promise.all per evitare errori TS
+    const [fornitori, categorieRaw, colori, taglie]: [string[], string[], string[], string[]] = await Promise.all([
+      prodotti.distinct('supplier'),
+      prodotti.aggregate([
+        { $unwind: '$category_name' },
+        { $match: { category_name: { $type: 'string' } } },
+        { $group: { _id: '$category_name' } },
+        { $project: { _id: 0, name: '$_id' } } // 👈 Cambiato quisu
+      ]).toArray().then(arr => arr.map(el => el.name)), // 👈 Ricaviamo l’array di stringhe
       prodotti.distinct('colore'),
       prodotti.distinct('taglia')
-    ])
+    ])    
+
+    // Filtri comuni per tutte le categorie testuali
+    const filterStrings = (arr: unknown[]): string[] =>
+      arr
+        .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+        .sort((a, b) => a.localeCompare(b))
 
     return NextResponse.json({
-      source: fornitori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
-      category_name: categorie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
-      colore: colori.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(),
-      taglia: taglie.filter((v): v is string => typeof v === 'string' && v.trim() !== '').sort(), // ✅ aggiunto
+      supplier: filterStrings(fornitori),
+      category_name: filterStrings(categorieRaw),
+      colore: filterStrings(colori),
+      taglia: filterStrings(taglie)
     })
   } catch (err) {
     console.error('Errore fetch filters:', err)
     return NextResponse.json({ error: 'Errore durante il recupero dei filtri' }, { status: 500 })
   }
 }
-  
+
 ---
 ### ./app/api/prodotti/route.ts
 
@@ -578,31 +590,44 @@ import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { logger } from '@/lib/logger'
 import { ObjectId } from 'mongodb'
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   const auth = await requireAuthUser(req)
   if (!('user' in auth)) return auth
 
   const { user } = auth
-  const url = new URL(req.url)
-  const id = url.pathname.split('/').pop()
+  const id = params.id
 
   if (!id) {
     return NextResponse.json({ error: 'ID mancante' }, { status: 400 })
   }
 
-  const collection = await getMongoCollection('chat_sessions')
-  const res = await collection.deleteOne({
-    _id: new ObjectId(id),
-    user_id: user.id,
-  })
+  const sessionId = new ObjectId(id)
+  const sessions = await getMongoCollection('chat_sessions')
+  const messages = await getMongoCollection('chat_messages')
 
-  if (res.deletedCount === 0) {
-    return NextResponse.json({ error: 'Nessuna sessione trovata' }, { status: 404 })
+  try {
+    const res = await sessions.deleteOne({ _id: sessionId, user_id: user.id })
+
+    if (res.deletedCount === 0) {
+      return NextResponse.json({ error: 'Nessuna sessione trovata' }, { status: 404 })
+    }
+
+    const msgResult = await messages.deleteMany({ session_id: sessionId })
+
+    logger.info('Sessione e messaggi eliminati', {
+      sessionId: id,
+      deletedMessages: msgResult.deletedCount,
+      userId: user.id
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    logger.error('Errore eliminazione sessione e messaggi', err)
+    return NextResponse.json({ error: 'Errore durante la cancellazione' }, { status: 500 })
   }
-
-  logger.info('Sessione eliminata', { id, userId: user.id })
-
-  return NextResponse.json({ success: true })
 }
 
 ---
@@ -1164,8 +1189,8 @@ export type ProductItem = {
   name: string
   unit_price: number
   qty?: number
-  source: string
-  category_name?: string
+  supplier: string
+  category_name?: string[] // ✅ aggiornato per array
   thumbnail: string
   colore?: string
   taglia?: string // ✅ aggiunto
@@ -1176,8 +1201,8 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:        { type: 'string', label: 'Fornitore', flags: ['filter'] },
-  category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
+  supplier:       { type: 'string', label: 'Fornitore', flags: ['filter'] },
+  category_name: { type: 'list', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
   taglia:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
@@ -1269,10 +1294,10 @@ export default function ProdottiPage() {
     { name: 'name', label: 'Nome', type: 'text' },
     { name: 'unit_price', label: 'Prezzo', type: 'text' },
     { name: 'qty', label: 'Quantità', type: 'text' },
-    { name: 'source', label: 'Fornitore', type: 'list' },
+    { name: 'supplier', label: 'Fornitore', type: 'list' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
-    { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto
+    { name: 'taglia', label: 'Taglia', type: 'list' },
     { name: 'link', label: 'Link', type: 'link' },
     { name: 'thumbnail', label: 'Immagine', type: 'image' },
   ]
@@ -1740,19 +1765,32 @@ const supabase = createClient()
 export async function fetchChatSessions(): Promise<ChatSessionRow[]> {
   const { data, error: sessionError } = await supabase.auth.getSession()
 
-  if (sessionError) throw new Error(sessionError.message)
-  if (!data.session) throw new Error('Sessione non trovata')
+  if (sessionError) throw new Error(`Errore Supabase: ${sessionError.message}`)
+  if (!data.session) throw new Error('Sessione utente non trovata')
 
   const token = data.session.access_token
 
   const res = await fetch('/api/chats', {
+    method: 'GET',
     cache: 'no-store',
     headers: {
       Authorization: `Bearer ${token}`
     }
   })
 
-  if (!res.ok) throw new Error('Errore caricamento sessioni')
+  if (!res.ok) {
+    let errorMsg = `Errore caricamento sessioni (${res.status})`
+    try {
+      const errData = await res.json()
+      errorMsg += `: ${errData?.error || JSON.stringify(errData)}`
+    } catch (parseError) {
+      const fallbackText = await res.text().catch(() => 'Risposta non leggibile')
+      errorMsg += `: ${fallbackText}`
+    }
+    console.error('❌ fetchChatSessions error:', errorMsg)
+    throw new Error(errorMsg)
+  }
+
   return res.json()
 }
 
@@ -1771,7 +1809,11 @@ export async function deleteChatSession(id: string): Promise<void> {
     }
   })
 
-  if (!res.ok) throw new Error('Errore eliminazione sessione')
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error(`❌ Errore eliminazione sessione (${res.status}):`, errText)
+    throw new Error(`Errore eliminazione sessione (${res.status})`)
+  }
 }
 
 ---
@@ -5392,7 +5434,7 @@ export async function searchProductsPaginated({
             description: 1,
             unit_price: 1,
             qty: 1,
-            source: 1,
+            supplier: 1,
             category_name: 1,
             thumbnail: 1,
             link: 1,
@@ -6110,25 +6152,55 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
 ---
 ### ./components/chat/chat-exctract-entities.tsx
 
-// extract-entities-llm.ts
 import { OpenAI } from 'openai'
 import type { ExtractedEntity } from './types'
+import { logger } from '@/lib/logger'
 
 const openai = new OpenAI()
 
 export async function extractEntitiesLLM(text: string): Promise<ExtractedEntity[]> {
   const prompt = `
-Estrai tutte le entità strutturate dalla seguente frase utente.
-Le entità possibili sono:
-- sku (codice prodotto, es. "5071", "5071_S30")
-- quantity (quantità richiesta o minima, es. "10", "almeno 100", "200")
-- color (nome colore, es. "blu", "rosso", "giallo")
-- size (taglia, es. "L", "M", "XL", "S")
-- category (categoria prodotto, es. "maglietta", "penna")
-- supplier (fornitore, se indicato)
-- other (qualsiasi altro campo rilevante)
+Estrai entità strutturate dalla frase utente seguente.
 
-Restituisci SOLO in JSON valido, come array di oggetti ExtractedEntity[] anche se vuoto!
+TIPI DI ENTITÀ:
+- sku: codice prodotto (es. "5071", "MO8422", "AR1010")
+- quantity: quantità richiesta o minima (es. "10", "almeno 100", "200")
+- color: nome del colore (es. "rosso", "blu", "giallo")
+- size: taglia (es. "S", "M", "L", "XL")
+- category: categoria prodotto (es. "maglietta", "penna", "zaino")
+- supplier: nome del fornitore (es. "MidOcean", "GiftLine")
+- other: qualsiasi altra informazione strutturata utile
+
+FORMAT OUTPUT:
+Devi restituire solo un oggetto JSON valido nel formato:
+{
+  "entities": [
+    { "type": "sku", "value": "MO8422" },
+    { "type": "quantity", "value": "100" }
+  ]
+}
+
+ESEMPI DI INPUT/OUTPUT:
+
+Input: "Vorrei 100 penne blu MO8422"
+Output:
+{
+  "entities": [
+    { "type": "quantity", "value": "100" },
+    { "type": "category", "value": "penne" },
+    { "type": "color", "value": "blu" },
+    { "type": "sku", "value": "MO8422" }
+  ]
+}
+
+Input: "Avete prodotti di MidOcean taglia L?"
+Output:
+{
+  "entities": [
+    { "type": "supplier", "value": "MidOcean" },
+    { "type": "size", "value": "L" }
+  ]
+}
 
 Frase utente:
 """
@@ -6137,26 +6209,40 @@ ${text}
   `.trim()
 
   const res = await openai.chat.completions.create({
-    model: 'gpt-4o', // puoi usare anche gpt-3.5-turbo per risparmiare
+    model: 'gpt-4o',
     messages: [
-      { role: 'system', content: 'Sei un estrattore di entità strutturate. Rispondi solo in JSON valido.' },
+      {
+        role: 'system',
+        content: 'Sei un estrattore di entità strutturate. Rispondi sempre e solo con JSON valido nel formato richiesto.'
+      },
       { role: 'user', content: prompt }
     ],
     temperature: 0,
-    response_format: { type: 'json_object' }, // forza il JSON
-    max_tokens: 400
+    response_format: { type: 'json_object' },
+    max_tokens: 600
   })
 
   const content = res.choices?.[0]?.message?.content
+  logger.info('[extractEntitiesLLM] Raw response content', { content })
+
   if (!content) throw new Error('Risposta LLM vuota')
 
-  let parsed: ExtractedEntity[]
   try {
-    parsed = JSON.parse(content)
-  } catch {
-    throw new Error('Risposta LLM non in JSON')
+    const parsed = JSON.parse(content)
+    if (!parsed.entities || !Array.isArray(parsed.entities)) throw new Error('Formato entità non valido')
+    logger.info('[extractEntitiesLLM] Entità estratte con successo', {
+      input: text,
+      entities: parsed.entities
+    })
+    return parsed.entities as ExtractedEntity[]
+  } catch (err) {
+    logger.error('Parsing fallito in extractEntitiesLLM', {
+      input: text,
+      content,
+      error: err
+    })
+    return []
   }
-  return parsed
 }
 
 ---
@@ -6287,7 +6373,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                     <div className="flex-1">
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {(product.unit_price ?? 0).toFixed(2)} € · {product.source}
+                        {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
 
                       {product.taglia && (
@@ -6452,8 +6538,8 @@ export type ProductItem = {
   description: string
   unit_price: number
   qty?: number
-  source: string
-  category_name?: string
+  supplier: string
+  category_name?: string[] // aggiornato qui
   thumbnail: string
   link?: string
   colore?: string
@@ -6630,7 +6716,7 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
  * @param sessionId - id della sessione
  * @param limit - quanti messaggi vuoi recuperare (default 5)
  */
-export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
+export async function getSessionHistoryMongo(sessionId: string, limit = 10) {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
   const history = await messages
     .find({ session_id: new ObjectId(sessionId) })
@@ -6668,7 +6754,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         description: 1,
         unit_price: 1,
         qty: 1,
-        source: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -6705,7 +6791,7 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         description: 1,
         unit_price: 1,
         qty: 1,
-        source: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -6788,26 +6874,40 @@ export async function generateChatResponse({
   entities?: ExtractedEntity[]
 }): Promise<ChatAIResponse> {
 
+  const entityBlock = Array.isArray(entities) && entities.length
+    ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n')
+    : ''
+
+  const historyBlock = Array.isArray(contextMessages) && contextMessages.length
+    ? '🔸 CONVERSATION_HISTORY:\n' +
+      contextMessages.map(h => `[${h.role}] ${h.content}`).join('\n')
+    : ''
+
+    const productBlock = products.length
+    ? products.map(p =>
+        `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${
+          Array.isArray(p.category_name)
+            ? p.category_name.join(' / ')
+            : p.category_name || 'N/A'
+        }`).join('\n')
+    : 'Nessun prodotto disponibile.'
+  
+
   const prompt = `
 🔸 USER_GOAL:
 ${message}
 
-${Array.isArray(entities) && entities.length ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n') : ''}
+${entityBlock}
 
+${historyBlock}
 
-${contextMessages?.length
-  ? '🔸 CONVERSATION_HISTORY:\n' +
-    contextMessages.map(h => `[${h.role}] ${h.content}`).join('\n') +
-    '\n'
-  : ''
-}
 🔸 PRODUCT_CONTEXT:
-${products.map((p) =>
-  `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
+${productBlock}
 
 🔸 CONSTRAINTS:
-- Suggerisci massimo 4 prodotti
-- Motiva la scelta per ciascuno (campo "reason")
+- Suggerisci massimo 4 prodotti (solo se presenti)
+- Se non ci sono prodotti disponibili, non suggerire nulla
+- Motiva la scelta per ciascun prodotto (campo "reason")
 - Classifica l'intento tra info, purchase, support, greeting, feedback, compare, other
 
 🔸 FORMAT_OUTPUT:
@@ -6850,7 +6950,49 @@ Rispondi solo in JSON valido.
     throw new Error('Risposta AI non in JSON')
   }
 
-  logger.info('Risposta AI generata', { summary: parsed.summary, intent: parsed.intent, nRecommended: parsed.recommended.length })
+  // Sanity check: se non ci sono prodotti, non devono esserci raccomandazioni
+  if (!products.length && parsed.recommended?.length) {
+    parsed.recommended = []
+    logger.warn('Nessun prodotto disponibile, ma il modello ha suggerito comunque raccomandazioni', { message })
+  }
+
+  // PATCH: fallback confronto parziale se uno SKU non trovato
+  if (
+    parsed.intent === 'compare' &&
+    (!parsed.recommended || parsed.recommended.length === 0) &&
+    products.length > 0 &&
+    entities?.some(e => e.type === 'sku')
+  ) {
+    const requestedSKUs = entities
+  .filter(e => e.type === 'sku')
+  .map(e => String(e.value))
+
+  const foundSKUs = products.map(p => String(p.sku))
+  const missingSKUs = requestedSKUs.filter(sku => !foundSKUs.includes(sku))
+
+
+    parsed.recommended = products.map(p => ({
+      sku: p.sku,
+      reason: 'Prodotto disponibile per il confronto'
+    }))
+
+    parsed.summary += ` Solo alcuni prodotti sono stati trovati: ${foundSKUs.join(', ')}. `
+    if (missingSKUs.length) {
+      parsed.summary += `Non ho trovato: ${missingSKUs.join(', ')}.`
+    }
+
+    logger.info('[generateChatResponse] Confronto parziale ricostruito', {
+      found: foundSKUs,
+      missing: missingSKUs
+    })
+  }
+
+  logger.info('Risposta AI generata', {
+    summary: parsed.summary,
+    intent: parsed.intent,
+    nRecommended: parsed.recommended.length
+  })
+
   return parsed
 }
 
@@ -6931,8 +7073,11 @@ export async function getProductsByEntitiesAI(
   embedding: number[],
   maxResults = 10
 ): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
+  // Step 1 – Estrazione entità tramite OpenAI
   const entities = await extractEntitiesLLM(message)
- 
+  logger.info('[getProductsByEntitiesAI] Entità estratte', { entities })
+
+  // Step 2 – Costruzione query Mongo a partire dalle entità
   const query: Filter<ProductItem> = {}
 
   const safeEntities = Array.isArray(entities) ? entities : []
@@ -6941,29 +7086,65 @@ export async function getProductsByEntitiesAI(
       if (!query.sku) query.sku = { $in: [] }
       ;(query.sku as { $in: string[] }).$in.push(e.value)
     }
-    if (e.type === 'quantity') {
-      const n = Number(e.value)
-      if (!isNaN(n)) query.qty = { $gte: n }
+
+    if (e.type === 'quantity' && typeof e.value === 'string') {
+      const match = e.value.match(/\d+/) // estrae primo numero
+      const n = match ? Number(match[0]) : NaN
+      if (!isNaN(n)) {
+        query.qty = { $gte: n }
+      }
     }
-    if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
-    if (e.type === 'size' && typeof e.value === 'string') query.taglia = e.value
-    if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
-    if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
+
+    if (e.type === 'color' && typeof e.value === 'string') {
+      query.colore = e.value
+    }
+
+    if (e.type === 'size' && typeof e.value === 'string') {
+      query.taglia = e.value
+    }
+
+    if (e.type === 'category' && typeof e.value === 'string') {
+      query.category_name = { $in: [e.value] }
+    }    
+
+    if (e.type === 'supplier' && typeof e.value === 'string') {
+      query.supplier = e.value // 👈 mapping corretto
+    }
   }
 
+  // Step 3 – Esecuzione query strutturata
   let products: ProductItem[] = []
-  if (Object.keys(query).length) {
+
+  if (Object.keys(query).length > 0) {
     const prodottiColl = await getMongoCollection<ProductItem>('prodotti')
     products = await prodottiColl.find(query).limit(maxResults).toArray()
+    logger.info('[getProductsByEntitiesAI] Prodotti trovati con query strutturata', {
+      count: products.length,
+      query
+    })
   }
 
-  // Fallback automatico se non trova nulla con query strutturata
+  // Step 4 – Fallback a ricerca ibrida se nessun prodotto trovato
   if (!products.length) {
-    products = await searchHybridMongo(message, embedding, maxResults)
+    logger.info('[getProductsByEntitiesAI] Nessun prodotto trovato, fallback a searchHybridMongo')
+    const hybridResults = await searchHybridMongo(message, embedding, maxResults)
+
+    // 🔍 Filtro opzionale su supplier se presente tra le entità
+    const supplierEntity = safeEntities.find(e => e.type === 'supplier' && typeof e.value === 'string')
+    if (supplierEntity) {
+      products = hybridResults.filter(p => p.supplier === supplierEntity.value)
+      logger.info('[getProductsByEntitiesAI] Filtrati per supplier nel fallback', {
+        supplier: supplierEntity.value,
+        filteredCount: products.length
+      })
+    } else {
+      products = hybridResults
+    }
   }
 
   return { products, entities }
 }
+
 ---
 ### ./components/chat/chat-embedding.tsx
 
@@ -8644,7 +8825,7 @@ export type ProdottoMongo = {
     unit_price: number
     qty: number
     source: string
-    category_name: string
+    category_name: string[] // ✅ ora è un array di stringhe
   
     // UI & AI
     thumbnail?: string

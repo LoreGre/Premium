@@ -7,7 +7,7 @@ export type ProdottoMongo = {
     unit_price: number
     qty: number
     source: string
-    category_name: string
+    category_name: string[] // ✅ ora è un array di stringhe
   
     // UI & AI
     thumbnail?: string

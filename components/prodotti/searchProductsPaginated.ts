@@ -66,7 +66,7 @@ export async function searchProductsPaginated({
             description: 1,
             unit_price: 1,
             qty: 1,
-            source: 1,
+            supplier: 1,
             category_name: 1,
             thumbnail: 1,
             link: 1,

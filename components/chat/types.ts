@@ -7,8 +7,8 @@ export type ProductItem = {
   description: string
   unit_price: number
   qty?: number
-  source: string
-  category_name?: string
+  supplier: string
+  category_name?: string[] // aggiornato qui
   thumbnail: string
   link?: string
   colore?: string

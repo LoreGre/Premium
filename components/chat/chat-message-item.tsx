@@ -123,7 +123,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                     <div className="flex-1">
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {(product.unit_price ?? 0).toFixed(2)} € · {product.source}
+                        {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
 
                       {product.taglia && (

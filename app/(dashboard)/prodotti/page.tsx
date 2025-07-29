@@ -15,8 +15,8 @@ export type ProductItem = {
   name: string
   unit_price: number
   qty?: number
-  source: string
-  category_name?: string
+  supplier: string
+  category_name?: string[] // ✅ aggiornato per array
   thumbnail: string
   colore?: string
   taglia?: string // ✅ aggiunto
@@ -27,8 +27,8 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   name:          { type: 'string', label: 'Nome' },
   unit_price:    { type: 'number', label: 'Prezzo' },
   qty:           { type: 'number', label: 'Qta' },
-  source:        { type: 'string', label: 'Fornitore', flags: ['filter'] },
-  category_name: { type: 'string', label: 'Categoria', flags: ['filter'] },
+  supplier:       { type: 'string', label: 'Fornitore', flags: ['filter'] },
+  category_name: { type: 'list', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
   colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
   taglia:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
@@ -120,10 +120,10 @@ export default function ProdottiPage() {
     { name: 'name', label: 'Nome', type: 'text' },
     { name: 'unit_price', label: 'Prezzo', type: 'text' },
     { name: 'qty', label: 'Quantità', type: 'text' },
-    { name: 'source', label: 'Fornitore', type: 'list' },
+    { name: 'supplier', label: 'Fornitore', type: 'list' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
     { name: 'colore', label: 'Colore', type: 'list' },
-    { name: 'taglia', label: 'Taglia', type: 'list' }, // ✅ aggiunto
+    { name: 'taglia', label: 'Taglia', type: 'list' },
     { name: 'link', label: 'Link', type: 'link' },
     { name: 'thumbnail', label: 'Immagine', type: 'image' },
   ]

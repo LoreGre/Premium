@@ -94,7 +94,7 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
  * @param sessionId - id della sessione
  * @param limit - quanti messaggi vuoi recuperare (default 5)
  */
-export async function getSessionHistoryMongo(sessionId: string, limit = 5) {
+export async function getSessionHistoryMongo(sessionId: string, limit = 10) {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
   const history = await messages
     .find({ session_id: new ObjectId(sessionId) })
@@ -132,7 +132,7 @@ export async function searchByVectorMongo(queryVector: number[], limit = 5): Pro
         description: 1,
         unit_price: 1,
         qty: 1,
-        source: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -169,7 +169,7 @@ export async function searchByTextMongo(query: string, limit = 5): Promise<(Prod
         description: 1,
         unit_price: 1,
         qty: 1,
-        source: 1,
+        supplier: 1,
         category_name: 1,
         thumbnail: 1,
         link: 1,
@@ -252,26 +252,40 @@ export async function generateChatResponse({
   entities?: ExtractedEntity[]
 }): Promise<ChatAIResponse> {
 
+  const entityBlock = Array.isArray(entities) && entities.length
+    ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n')
+    : ''
+
+  const historyBlock = Array.isArray(contextMessages) && contextMessages.length
+    ? '🔸 CONVERSATION_HISTORY:\n' +
+      contextMessages.map(h => `[${h.role}] ${h.content}`).join('\n')
+    : ''
+
+    const productBlock = products.length
+    ? products.map(p =>
+        `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${
+          Array.isArray(p.category_name)
+            ? p.category_name.join(' / ')
+            : p.category_name || 'N/A'
+        }`).join('\n')
+    : 'Nessun prodotto disponibile.'
+  
+
   const prompt = `
 🔸 USER_GOAL:
 ${message}
 
-${Array.isArray(entities) && entities.length ? '🔸 ENTITIES:\n' + entities.map(e => `- ${e.type}: ${e.value}`).join('\n') : ''}
+${entityBlock}
 
+${historyBlock}
 
-${contextMessages?.length
-  ? '🔸 CONVERSATION_HISTORY:\n' +
-    contextMessages.map(h => `[${h.role}] ${h.content}`).join('\n') +
-    '\n'
-  : ''
-}
 🔸 PRODUCT_CONTEXT:
-${products.map((p) =>
-  `- ${p.name} (${p.unit_price}€), SKU: ${p.sku}, Categoria: ${p.category_name}`).join('\n')}
+${productBlock}
 
 🔸 CONSTRAINTS:
-- Suggerisci massimo 4 prodotti
-- Motiva la scelta per ciascuno (campo "reason")
+- Suggerisci massimo 4 prodotti (solo se presenti)
+- Se non ci sono prodotti disponibili, non suggerire nulla
+- Motiva la scelta per ciascun prodotto (campo "reason")
 - Classifica l'intento tra info, purchase, support, greeting, feedback, compare, other
 
 🔸 FORMAT_OUTPUT:
@@ -314,7 +328,49 @@ Rispondi solo in JSON valido.
     throw new Error('Risposta AI non in JSON')
   }
 
-  logger.info('Risposta AI generata', { summary: parsed.summary, intent: parsed.intent, nRecommended: parsed.recommended.length })
+  // Sanity check: se non ci sono prodotti, non devono esserci raccomandazioni
+  if (!products.length && parsed.recommended?.length) {
+    parsed.recommended = []
+    logger.warn('Nessun prodotto disponibile, ma il modello ha suggerito comunque raccomandazioni', { message })
+  }
+
+  // PATCH: fallback confronto parziale se uno SKU non trovato
+  if (
+    parsed.intent === 'compare' &&
+    (!parsed.recommended || parsed.recommended.length === 0) &&
+    products.length > 0 &&
+    entities?.some(e => e.type === 'sku')
+  ) {
+    const requestedSKUs = entities
+  .filter(e => e.type === 'sku')
+  .map(e => String(e.value))
+
+  const foundSKUs = products.map(p => String(p.sku))
+  const missingSKUs = requestedSKUs.filter(sku => !foundSKUs.includes(sku))
+
+
+    parsed.recommended = products.map(p => ({
+      sku: p.sku,
+      reason: 'Prodotto disponibile per il confronto'
+    }))
+
+    parsed.summary += ` Solo alcuni prodotti sono stati trovati: ${foundSKUs.join(', ')}. `
+    if (missingSKUs.length) {
+      parsed.summary += `Non ho trovato: ${missingSKUs.join(', ')}.`
+    }
+
+    logger.info('[generateChatResponse] Confronto parziale ricostruito', {
+      found: foundSKUs,
+      missing: missingSKUs
+    })
+  }
+
+  logger.info('Risposta AI generata', {
+    summary: parsed.summary,
+    intent: parsed.intent,
+    nRecommended: parsed.recommended.length
+  })
+
   return parsed
 }
 
@@ -395,8 +451,11 @@ export async function getProductsByEntitiesAI(
   embedding: number[],
   maxResults = 10
 ): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
+  // Step 1 – Estrazione entità tramite OpenAI
   const entities = await extractEntitiesLLM(message)
- 
+  logger.info('[getProductsByEntitiesAI] Entità estratte', { entities })
+
+  // Step 2 – Costruzione query Mongo a partire dalle entità
   const query: Filter<ProductItem> = {}
 
   const safeEntities = Array.isArray(entities) ? entities : []
@@ -405,25 +464,60 @@ export async function getProductsByEntitiesAI(
       if (!query.sku) query.sku = { $in: [] }
       ;(query.sku as { $in: string[] }).$in.push(e.value)
     }
-    if (e.type === 'quantity') {
-      const n = Number(e.value)
-      if (!isNaN(n)) query.qty = { $gte: n }
+
+    if (e.type === 'quantity' && typeof e.value === 'string') {
+      const match = e.value.match(/\d+/) // estrae primo numero
+      const n = match ? Number(match[0]) : NaN
+      if (!isNaN(n)) {
+        query.qty = { $gte: n }
+      }
     }
-    if (e.type === 'color' && typeof e.value === 'string') query.colore = e.value
-    if (e.type === 'size' && typeof e.value === 'string') query.taglia = e.value
-    if (e.type === 'category' && typeof e.value === 'string') query.category_name = e.value
-    if (e.type === 'supplier' && typeof e.value === 'string') query.supplier = e.value
+
+    if (e.type === 'color' && typeof e.value === 'string') {
+      query.colore = e.value
+    }
+
+    if (e.type === 'size' && typeof e.value === 'string') {
+      query.taglia = e.value
+    }
+
+    if (e.type === 'category' && typeof e.value === 'string') {
+      query.category_name = { $in: [e.value] }
+    }    
+
+    if (e.type === 'supplier' && typeof e.value === 'string') {
+      query.supplier = e.value // 👈 mapping corretto
+    }
   }
 
+  // Step 3 – Esecuzione query strutturata
   let products: ProductItem[] = []
-  if (Object.keys(query).length) {
+
+  if (Object.keys(query).length > 0) {
     const prodottiColl = await getMongoCollection<ProductItem>('prodotti')
     products = await prodottiColl.find(query).limit(maxResults).toArray()
+    logger.info('[getProductsByEntitiesAI] Prodotti trovati con query strutturata', {
+      count: products.length,
+      query
+    })
   }
 
-  // Fallback automatico se non trova nulla con query strutturata
+  // Step 4 – Fallback a ricerca ibrida se nessun prodotto trovato
   if (!products.length) {
-    products = await searchHybridMongo(message, embedding, maxResults)
+    logger.info('[getProductsByEntitiesAI] Nessun prodotto trovato, fallback a searchHybridMongo')
+    const hybridResults = await searchHybridMongo(message, embedding, maxResults)
+
+    // 🔍 Filtro opzionale su supplier se presente tra le entità
+    const supplierEntity = safeEntities.find(e => e.type === 'supplier' && typeof e.value === 'string')
+    if (supplierEntity) {
+      products = hybridResults.filter(p => p.supplier === supplierEntity.value)
+      logger.info('[getProductsByEntitiesAI] Filtrati per supplier nel fallback', {
+        supplier: supplierEntity.value,
+        filteredCount: products.length
+      })
+    } else {
+      products = hybridResults
+    }
   }
 
   return { products, entities }
