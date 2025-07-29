@@ -24,7 +24,7 @@ export async function fetchChatSessions(): Promise<ChatSessionRow[]> {
     try {
       const errData = await res.json()
       errorMsg += `: ${errData?.error || JSON.stringify(errData)}`
-    } catch (parseError) {
+    } catch {
       const fallbackText = await res.text().catch(() => 'Risposta non leggibile')
       errorMsg += `: ${fallbackText}`
     }

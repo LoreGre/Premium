@@ -4,15 +4,14 @@ import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { logger } from '@/lib/logger'
 import { ObjectId } from 'mongodb'
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest) {
   const auth = await requireAuthUser(req)
   if (!('user' in auth)) return auth
 
   const { user } = auth
-  const id = params.id
+
+  // Recupera l'id dall'URL
+  const id = req.nextUrl.pathname.split('/').pop()
 
   if (!id) {
     return NextResponse.json({ error: 'ID mancante' }, { status: 400 })
