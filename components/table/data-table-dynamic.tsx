@@ -497,7 +497,7 @@ export function DataTableDynamic<
           <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Elimina fornitore</AlertDialogTitle>
+                <AlertDialogTitle>Conferma Eliminazione</AlertDialogTitle>
                 <AlertDialogDescription>
                   Questa azione è irreversibile. Vuoi davvero eliminare{' '}
                   {itemsToDelete.length === 1 ? (

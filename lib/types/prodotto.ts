@@ -12,8 +12,8 @@ export type ProdottoMongo = {
     // UI & AI
     thumbnail?: string
     link: string
-    colore?: string
-    taglia?: string
+    color?: string
+    size?: string
   
     // AI & versioning
     content_hash?: string

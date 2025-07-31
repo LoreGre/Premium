@@ -3,11 +3,7 @@ import { OpenAI } from 'openai'
 const openai = new OpenAI()
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 
-/**
- * Genera embedding vettoriale per testo (sanitize incluso)
- * @param text - testo da embeddare
- * @returns number[] embedding OpenAI
- */
+
 export async function getEmbedding(text: string): Promise<number[]> {
   // Sanitize: newline, lower, trim, collapse spaces
   const input = text.replace(/\n/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim()

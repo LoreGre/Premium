@@ -126,9 +126,9 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
 
-                      {product.taglia && (
+                      {product.size && (
                         <p className="text-xs text-muted-foreground">
-                          Taglia: <span className="font-medium">{product.taglia}</span>
+                          Taglia: <span className="font-medium">{product.size}</span>
                         </p>
                       )}
                       <p className={cn(

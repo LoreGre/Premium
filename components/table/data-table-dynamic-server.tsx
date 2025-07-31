@@ -543,10 +543,23 @@ export function DataTableDynamicServer<T extends Record<string, unknown>>({
         <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Conferma Eliminazione</AlertDialogTitle>
-              <AlertDialogDescription>
-                Sei sicuro di voler eliminare {itemsToDelete.length} elemento(i)?
-              </AlertDialogDescription>
+            <AlertDialogTitle>Conferma Eliminazione</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Questa azione è irreversibile. Vuoi davvero eliminare{' '}
+                  {itemsToDelete.length === 1 ? (
+                    <strong>
+                      {
+                        ('denominazione' in itemsToDelete[0] &&
+                        typeof itemsToDelete[0]['denominazione'] === 'string'
+                          ? (itemsToDelete[0]['denominazione'] as string)
+                          : 'questo elemento')
+                      }
+                    </strong>
+                  ) : (
+                    <strong>{itemsToDelete.length} elementi</strong>
+                  )}
+                  ?
+                </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Annulla</AlertDialogCancel>

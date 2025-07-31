@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
-import { updateMessageFeedback } from '@/components/chat/chat-actions'
+import { updateMessageFeedback } from '@/components/chat/chat-feedback'
 import { logger } from '@/lib/logger'
 
 const validRatings = ['positive', 'negative', 'neutral'] as const

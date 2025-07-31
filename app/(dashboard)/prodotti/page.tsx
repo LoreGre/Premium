@@ -18,8 +18,8 @@ export type ProductItem = {
   supplier: string
   category_name?: string[] // ✅ aggiornato per array
   thumbnail: string
-  colore?: string
-  taglia?: string // ✅ aggiunto
+  color?: string
+  size?: string // ✅ aggiunto
 }
 
 const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
@@ -30,8 +30,8 @@ const columnTypes: Record<keyof ProductItem, ColumnDefinition> = {
   supplier:       { type: 'string', label: 'Fornitore', flags: ['filter'] },
   category_name: { type: 'list', label: 'Categoria', flags: ['filter'] },
   thumbnail:     { type: 'image', label: 'Immagine' },
-  colore:        { type: 'string', label: 'Colore', flags: ['filter'] },
-  taglia:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
+  color:        { type: 'string', label: 'Colore', flags: ['filter'] },
+  size:        { type: 'string', label: 'Taglia', flags: ['filter'] }, // ✅ aggiunto
 }
 
 const fetchFilters = async (): Promise<Record<string, string[]>> => {
@@ -122,8 +122,8 @@ export default function ProdottiPage() {
     { name: 'qty', label: 'Quantità', type: 'text' },
     { name: 'supplier', label: 'Fornitore', type: 'list' },
     { name: 'category_name', label: 'Categoria', type: 'list' },
-    { name: 'colore', label: 'Colore', type: 'list' },
-    { name: 'taglia', label: 'Taglia', type: 'list' },
+    { name: 'color', label: 'Colore', type: 'list' },
+    { name: 'size', label: 'Taglia', type: 'list' },
     { name: 'link', label: 'Link', type: 'link' },
     { name: 'thumbnail', label: 'Immagine', type: 'image' },
   ]

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createChatSession, getSessionHistoryMongo } from './chat-actions'
+import { createChatSession, getSessionHistoryMongo } from './chat-sessions'
 import { ChatInput } from './chat-input'
 import { ChatMessageItem } from './chat-message-item'
 import { sendChatMessage } from './chat-api'

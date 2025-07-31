@@ -11,16 +11,23 @@ export type ProductItem = {
   category_name?: string[] // aggiornato qui
   thumbnail: string
   link?: string
-  colore?: string
-  taglia?: string
+  color?: string
+  size?: string
   score?: number
 }
 
 // ------------------ ENTITÀ ------------------
-export type ExtractedEntity = {
-  type: 'color' | 'size' | 'category' | 'sku' | 'quantity' | 'supplier' | 'other'
-  value: string | number
-}
+export type ExtractedEntity =
+  | { type: 'color'; value: string }
+  | { type: 'size'; value: string }
+  | { type: 'category'; value: string }
+  | { type: 'sku'; value: string }
+  | { type: 'quantity'; value: number }
+  | { type: 'supplier'; value: string }
+  | { type: 'name'; value: string }
+  | { type: 'description'; value: string }
+  | { type: 'other'; value: string | number }
+
 
 // ------------------ RISPOSTA AI ------------------
 export type ChatAIResponse = {
@@ -29,7 +36,7 @@ export type ChatAIResponse = {
     sku: string
     reason: string
   }[]
-  intent?: 'info' | 'purchase' | 'support' | 'greeting' | 'feedback' | 'compare' | 'other'
+  intent?: 'info' | 'purchase' | 'support' | 'greeting' | 'feedback' | 'compare' | 'clarify' | 'other'
   entities?: ExtractedEntity[]
 }
 
@@ -70,12 +77,6 @@ export type ChatSession = {
   user_id: string
   createdAt: string
   updatedAt?: string
-}
-
-// ------------------ CONTESTO CONVERSAZIONALE ------------------
-export type ChatContext = {
-  messages: ChatMessage[]
-  sessionId: string
 }
 
 // ------------------ RISPOSTA API CHAT (FRONTEND) ------------------

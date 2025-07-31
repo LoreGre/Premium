@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
         { $group: { _id: '$category_name' } },
         { $project: { _id: 0, name: '$_id' } } // 👈 Cambiato quisu
       ]).toArray().then(arr => arr.map(el => el.name)), // 👈 Ricaviamo l’array di stringhe
-      prodotti.distinct('colore'),
-      prodotti.distinct('taglia')
+      prodotti.distinct('color'),
+      prodotti.distinct('size')
     ])    
 
     // Filtri comuni per tutte le categorie testuali
@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       supplier: filterStrings(fornitori),
       category_name: filterStrings(categorieRaw),
-      colore: filterStrings(colori),
-      taglia: filterStrings(taglie)
+      color: filterStrings(colori),
+      size: filterStrings(taglie)
     })
   } catch (err) {
     console.error('Errore fetch filters:', err)

@@ -1,25 +1,25 @@
 import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
-import { getEmbedding } from '@/components/chat/chat-embedding'
-import {
-  saveMessageMongo,
-  generateChatResponse,
-  getSessionHistoryMongo,
-  getProductsByEntitiesAI
-} from '@/components/chat/chat-actions'
+import { extractEntitiesLLM } from '@/components/chat/chat-exctract-entities'
+import { buildEmbeddingText } from '@/components/chat/chat-build-emedding'
+import { getEmbedding } from '@/components/chat/chat-get-embedding'
+import { saveMessageMongo } from '@/components/chat/chat-save'
+import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
+import { getProducts } from '@/components/chat/chat-get-products'
+import { generateChatResponse } from '@/components/chat/chat-response'
 import type { ChatAIResponse } from '@/components/chat/types'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
   try {
-    // AUTH PROTEZIONE
+    // Step 1 – Autenticazione utente
     const auth = await requireAuthUser(req)
     if ('status' in auth) return auth
     const { user } = auth
-
     logger.info('Utente autenticato', { userId: user.id })
 
+    // Step 2 – Parsing input e validazione
     const { message, sessionId } = await req.json()
     logger.info('Payload ricevuto', { message, sessionId })
 
@@ -28,37 +28,57 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Messaggio o sessione mancanti' }, { status: 400 })
     }
 
+    if (!ObjectId.isValid(sessionId)) {
+      throw new Error('ID di sessione non valido')
+    }
+    
     const sessionObjectId = new ObjectId(sessionId)
 
-    const embedding = await getEmbedding(message)
-    logger.info('Embedding generato', { preview: embedding.slice(0, 5) })
+    // Step 3 – Estrazione entità dal messaggio utente
+    const entities = await extractEntitiesLLM(message)
+    logger.info('[POST] Entità estratte', { entities })
 
+    // Step 4 – Costruzione testo strutturato per embedding
+    const embeddingText = buildEmbeddingText(message, entities)
+    logger.info('[POST] Testo embedding strutturato', { embeddingText })
+
+    // Step 5 – Generazione embedding dal testo strutturato
+    const embedding = await getEmbedding(embeddingText)
+    logger.info('[POST] Embedding generato', { preview: embedding.slice(0, 5) })
+
+    // Step 6 – Recupero cronologia messaggi recenti (ultimi 10)
+    const history = await getSessionHistoryMongo(sessionId, 10)
+    logger.info('[POST] History', { history })
+
+    // Step 7 – Ricerca prodotti con entità + embedding + contesto
+    const { products, entities: mergedEntities } = await getProducts(message, embedding, history, entities, 10)
+    logger.info('[POST] Prodotti trovati', { count: products.length, skus: products.map(p => p.sku) })
+
+    // Step 8 – Salvataggio messaggio utente con entità ed embedding
     const userMessageId = await saveMessageMongo({
       session_id: sessionObjectId,
       user_id: user.id,
       role: 'user',
       content: message,
       embedding,
+      entities: mergedEntities,
       createdAt: new Date().toISOString()
     })
-    logger.info('Messaggio utente salvato', { userMessageId })
+    logger.info('[POST] Messaggio utente salvato', { userMessageId })
 
-    const history = await getSessionHistoryMongo(sessionId, 5)
-
-    const { products } = await getProductsByEntitiesAI(message, embedding, 10)
-    logger.info('Prodotti trovati', { productsCount: products.length, skus: products.map(p => p.sku) })
-
+    // Step 9 – Generazione risposta AI
     const aiResponse: ChatAIResponse = await generateChatResponse({
       message,
       products,
       contextMessages: history,
+      entities: mergedEntities
     })
-
-    logger.info('Risposta AI generata', {
+    logger.info('[POST] Risposta AI generata', {
       intent: aiResponse.intent,
       nRecommended: aiResponse.recommended.length
     })
 
+    // Step 10 – Salvataggio messaggio AI con raccomandazioni e entità
     const aiMessageId = await saveMessageMongo({
       session_id: sessionObjectId,
       user_id: user.id,
@@ -70,8 +90,9 @@ export async function POST(req: Request) {
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       createdAt: new Date().toISOString()
     })
-    logger.info('Messaggio AI salvato', { aiMessageId })
+    logger.info('[POST] Messaggio AI salvato', { aiMessageId })
 
+    // Step 11 – Risposta JSON al client
     return NextResponse.json({
       summary: aiResponse.summary,
       recommended: aiResponse.recommended,
@@ -80,8 +101,9 @@ export async function POST(req: Request) {
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       _id: aiMessageId?.toString()
     })
+
   } catch (err) {
-    logger.error('Errore in /api/chat', { error: (err as Error).message })
+    logger.error('[POST] Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }
