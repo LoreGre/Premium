@@ -18,14 +18,13 @@ export type ProductItem = {
 
 // ------------------ ENTITÀ ------------------
 export type ExtractedEntity =
-  | { type: 'color'; value: string }
-  | { type: 'size'; value: string }
-  | { type: 'category'; value: string }
   | { type: 'sku'; value: string }
   | { type: 'quantity'; value: number }
+  | { type: 'color'; value: string }
+  | { type: 'size'; value: string }
   | { type: 'supplier'; value: string }
-  | { type: 'name'; value: string }
-  | { type: 'description'; value: string }
+  | { type: 'terms'; value: string[] }
+  | { type: 'attributes'; value: string[] }
   | { type: 'other'; value: string | number }
 
 
@@ -36,7 +35,7 @@ export type ChatAIResponse = {
     sku: string
     reason: string
   }[]
-  intent?: 'info' | 'purchase' | 'support' | 'greeting' | 'feedback' | 'compare' | 'clarify' | 'other'
+  intent?: 'info' | 'purchase' | 'compare' | 'clarify' | 'other'
   entities?: ExtractedEntity[]
 }
 
@@ -69,6 +68,7 @@ export type UIMessage = Omit<ChatMessage, 'session_id' | '_id'> & {
   _ui_id: string
   _id?: string // <-- solo string!
   isTyping?: boolean
+  source?: 'standard-response' | 'fallback-no-entities' | 'fallback-no-products' | 'fallback-context-shift' | 'fallback-no-intent'
 }
 
 // ------------------ SESSIONE CHAT ------------------

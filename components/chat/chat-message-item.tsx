@@ -1,12 +1,10 @@
-'use client'
-
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Eye, ShoppingCart, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { UIMessage } from './types' // 👈 usa UIMessage (tipizzato per il client)
+import type { UIMessage } from './types'
 
 function TypingDots() {
   return (
@@ -14,6 +12,23 @@ function TypingDots() {
       <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.2s]" />
       <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0s]" />
       <span className="block w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0.2s]" />
+    </div>
+  )
+}
+
+function FallbackNotice({ source }: { source: string }) {
+  const fallbackMessages: Record<string, string> = {
+    'fallback-no-entities': 'Non ho capito bene. Puoi specificare meglio cosa stai cercando?',
+    'fallback-no-products': 'Nessun prodotto trovato con queste caratteristiche.',
+    'fallback-context-shift': 'Hai cambiato argomento. Ti consiglio di aprire una nuova chat.',
+    'fallback-no-intent': 'Vuoi un consiglio, un confronto o delle informazioni?'
+  }
+  const msg = fallbackMessages[source] ?? null
+  if (!msg) return null
+
+  return (
+    <div className="mt-4 text-sm text-yellow-900 bg-yellow-100 border border-yellow-300 rounded-xl px-4 py-3">
+      ⚠️ {msg}
     </div>
   )
 }
@@ -31,13 +46,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
   const [feedback, setFeedback] = useState<'positive' | 'negative' | undefined>(initial)
 
   const supabase = createClient()
-
-  const formattedTime = message.createdAt
-    ? new Date(message.createdAt).toLocaleTimeString('it-IT', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    : null
 
   const products = message.products ?? []
   const reasons: Record<string, string> =
@@ -68,7 +76,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
         body: JSON.stringify({
           messageId: message._id,
           rating,
-          comment: '' // opzionale
+          comment: ''
         })
       })
 
@@ -97,15 +105,13 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
           <p className="whitespace-pre-line">{message.content}</p>
         )}
 
-
-        {formattedTime && (
-          <p className="text-[10px] mt-1 text-right opacity-60">{formattedTime}</p>
+        {message.intent === 'clarify' && (!message.recommended || message.recommended.length === 0) && (
+          <FallbackNotice source={message.source ?? ''} />
         )}
 
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
-              console.log('Product:', product),
               <div
                 key={product.sku}
                 title={`SKU: ${product.sku}`}
@@ -125,15 +131,14 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
-
                       {product.size && (
                         <p className="text-xs text-muted-foreground">
                           Taglia: <span className="font-medium">{product.size}</span>
                         </p>
                       )}
                       <p className={cn(
-                        "text-xs mt-1 font-medium",
-                        (product.qty ?? 0) > 0 ? "text-green-600" : "text-red-600"
+                        'text-xs mt-1 font-medium',
+                        (product.qty ?? 0) > 0 ? 'text-green-600' : 'text-red-600'
                       )}>
                         ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>

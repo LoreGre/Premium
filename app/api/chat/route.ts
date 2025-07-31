@@ -2,13 +2,15 @@ import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { extractEntitiesLLM } from '@/components/chat/chat-exctract-entities'
-import { buildEmbeddingText } from '@/components/chat/chat-build-emedding'
+import { buildEmbeddingText } from '@/components/chat/chat-build-embedding'
 import { getEmbedding } from '@/components/chat/chat-get-embedding'
 import { saveMessageMongo } from '@/components/chat/chat-save'
 import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
 import { getProducts } from '@/components/chat/chat-get-products'
+import { detectContextShift } from '@/components/chat/chat-detect-context'
 import { generateChatResponse } from '@/components/chat/chat-response'
 import type { ChatAIResponse } from '@/components/chat/types'
+import {fallbackNoEntities,fallbackNoProducts, fallbackContextShift, fallbackNoIntent} from '@/components/chat/chat-fallback'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
@@ -54,7 +56,54 @@ export async function POST(req: Request) {
     const { products, entities: mergedEntities } = await getProducts(message, embedding, history, entities, 10)
     logger.info('[POST] Prodotti trovati', { count: products.length, skus: products.map(p => p.sku) })
 
-    // Step 8 – Salvataggio messaggio utente con entità ed embedding
+    // Step 8 – Detect context shift
+    const contextShift = detectContextShift(history, mergedEntities)
+
+    let aiResponse: ChatAIResponse
+    let responseSource = 'default'
+
+    if (contextShift) {
+      logger.warn('[POST] Cambio argomento rilevato – fallbackContextShift attivo')
+      aiResponse = await fallbackContextShift({ message, embedding, history, entities: mergedEntities })
+      responseSource = 'fallback-context-shift'
+    } else if (mergedEntities.length === 0) {
+      logger.warn('[POST] Nessuna entità trovata – fallbackNoEntities attivo')
+      aiResponse = await fallbackNoEntities({ message, embedding, history })
+      responseSource = 'fallback-no-entities'
+    } else if (products.length === 0) {
+      logger.warn('[POST] Nessun prodotto trovato – fallbackNoProducts attivo')
+      aiResponse = await fallbackNoProducts({ message, embedding, history, entities: mergedEntities })
+      responseSource = 'fallback-no-products'
+    } else {
+      aiResponse = await generateChatResponse({
+        message,
+        products,
+        contextMessages: history,
+        entities: mergedEntities
+      })
+      responseSource = 'standard-response'
+    
+      // 🔍 Controllo intenzione mancante
+      if (!aiResponse.intent || aiResponse.intent === 'other') {
+        logger.warn('[POST] Intento non rilevato – fallbackNoIntent attivo')
+        aiResponse = await fallbackNoIntent({
+          message,
+          embedding,
+          history,
+          entities: mergedEntities
+        })
+        responseSource = 'fallback-no-intent'
+      }
+    }
+    
+
+    logger.info('[POST] Risposta AI finalizzata', {
+      source: responseSource,
+      intent: aiResponse.intent,
+      nRecommended: aiResponse.recommended.length
+    })
+
+    // Step 9 – Salvataggio messaggio utente con entità ed embedding
     const userMessageId = await saveMessageMongo({
       session_id: sessionObjectId,
       user_id: user.id,
@@ -65,18 +114,6 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString()
     })
     logger.info('[POST] Messaggio utente salvato', { userMessageId })
-
-    // Step 9 – Generazione risposta AI
-    const aiResponse: ChatAIResponse = await generateChatResponse({
-      message,
-      products,
-      contextMessages: history,
-      entities: mergedEntities
-    })
-    logger.info('[POST] Risposta AI generata', {
-      intent: aiResponse.intent,
-      nRecommended: aiResponse.recommended.length
-    })
 
     // Step 10 – Salvataggio messaggio AI con raccomandazioni e entità
     const aiMessageId = await saveMessageMongo({

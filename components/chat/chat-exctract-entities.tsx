@@ -8,76 +8,100 @@ const openai = new OpenAI()
 
 export async function extractEntitiesLLM(text: string): Promise<ExtractedEntity[]> {
   const prompt = `
-  Estrai entità strutturate dalla frase utente seguente, interpretando correttamente anche forme al plurale, femminili, abbreviate o colloquiali (es. "rosse", "10 pezzi", "XL", "midocean", "bluette").
-  Considera che di solito nel catalogo category è molto poco flessibile.
-  Invece name e description possono accettare stringhe lunghe molto ricercabili.
+Estrai entità strutturate dalla frase utente seguente, interpretando correttamente anche forme al plurale, femminili, abbreviate o colloquiali (es. "rosse", "10 pezzi", "XL", "midocean", "bluette").
 
-  TIPI DI ENTITÀ:
-  - sku: codice prodotto (es. "5071", "MO8422", "AR1010")
-  - quantity: quantità richiesta o minima (es. "10", "almeno 100", "200", "10 pezzi", "una cinquantina")
-  - color: nome del colore (es. "rosso", "blu", "giallo", "rosse", "rosa acceso")
-  - size: taglia (es. "S", "M", "L", "XL", "extra large")
+L'obiettivo è identificare con precisione i concetti chiave rilevanti per la ricerca nel catalogo prodotti.
 
-  - category: categoria standard e formale del prodotto, corrispondente alle classificazioni usate nel catalogo (es. "maglietta", "penna", "zaino", "tazze", "borracce").
-    Questa entità è solitamente rigida e meno soggetta a variazioni.
+📌 NOTA IMPORTANTE:
+- L'entità **terms** è una lista di parole o frasi chiave che rappresentano ciò che l'utente vuole trovare (es. "borraccia", "zaino trekking", "penna personalizzata"). Verranno usate come query testuale o semantica nei campi \`name\`, \`description\` e \`category_name\`.
+- Non includere aggettivi o caratteristiche tecniche nei \`terms\`. Questi devono essere inseriti nell'entità **attributes** (es. "termica", "colorata", "resistente").
 
-  - name: nome commerciale, marchio o denominazione specifica del prodotto. Può includere descrizioni sintetiche o termini più liberi usati per identificare un prodotto (es. "borraccia termica", "zaino trekking", "penne stilografiche").
+🧠 ENTITÀ SUPPORTATE:
+- \`sku\`: codice prodotto (es. "MO8422", "5071", "AR1010")
+- \`quantity\`: quantità richiesta o minima (es. "10", "almeno 100", "10 pezzi", "una cinquantina")
+- \`color\`: colore rilevante (es. "rosso", "blu", "rosse", "rosa acceso", "bluette")
+- \`size\`: taglia (es. "S", "M", "L", "XL", "extra large")
+- \`supplier\`: nome del fornitore o marchio (es. "MidOcean", "GiftLine")
+- \`terms\`: array di keyword utili per la ricerca testuale e semantica nei campi \`name\`, \`description\`, \`category_name\`
+- \`attributes\`: array di attributi, aggettivi o caratteristiche rilevanti non centrali (es. "resistente", "leggero", "con filtro"), da usare in \`description\`
+- \`other\`: qualsiasi altra informazione utile strutturata non compresa sopra
 
-  - description: parole chiave o frasi brevi che descrivono caratteristiche, qualità o funzionalità del prodotto. Viene estratta da descrizioni più lunghe e può includere aggettivi o attributi rilevanti (es. "resistente", "con filtro integrato", "leggero").
+📦 ESEMPIO schema database (MongoDB collection "prodotti"):
+{
+  "_id": {
+    "$oid": "6888f71d3a3162e53a9712e8"
+  },
+  "sku": "AR1249-16",
+  "name": "Bussola nautica",
+  "description": "Bussola nautica in alluminio in confezione di latta.",
+  "supplier": "MidOcean",
+  "category_name": [
+    "Ufficio & Scrittura",
+    "Accessori ufficio",
+    "Luci da tavolo"
+  ],
+  "thumbnail": "https://cdn1.midocean.com/image/700X700/ar1249-16.jpg",
+  "link": "",
+  "qty": 2858,
+  "unit_price": 3.68,
+  "content_hash": "bb42544494b0139f922b314597fb7d9184e7e9389f6d3903d045476fdd9dc1e4",
+  "embedding": [
+    -0.024253117, 0.0013268577, 0.046131495, ...
+	....
+  ],
+  "ToUpdate": 0,
+  "color": "Argento",
+  "size": ""
+}
 
-  - supplier: nome del fornitore o marchio (es. "MidOcean", "GiftLine", "HiGift")
+🧾 FORMAT OUTPUT:
+Devi rispondere **solo** con un oggetto JSON valido, come questo:
+{
+  "entities": [
+    { "type": "sku", "value": "MO8422" },
+    { "type": "color", "value": "blu" },
+    { "type": "terms", "value": ["penna", "blu"] },
+    { "type": "attributes", "value": ["resistente", "impermeabile", "termico", "leggero"] },
+    { "type": "quantity", "value": 100 }
+  ]
+}
 
-  - other: qualsiasi altra informazione strutturata utile che non rientra nelle categorie sopra.
+✅ ESEMPI:
 
-  
-  FORMAT OUTPUT:
-  Restituisci solo un oggetto JSON valido con questo formato:
-  {
-    "entities": [
-      { "type": "sku", "value": "MO8422" },
-      { "type": "quantity", "value": "100" }
-    ]
-  }
+Input: "Vorrei 100 penne blu MO8422"
+Output:
+{
+  "entities": [
+    { "type": "quantity", "value": 100 },
+    { "type": "color", "value": "blu" },
+    { "type": "sku", "value": "MO8422" },
+    { "type": "terms", "value": ["penne", "blu"] }
+  ]
+}
 
-  ESEMPI DI INPUT/OUTPUT:
+Input: "Cerco una borraccia termica resistente"
+Output:
+{
+  "entities": [
+    { "type": "terms", "value": ["borraccia"] },
+    { "type": "attributes", "value": ["termica", "resistente"] }
+  ]
+}
 
-  Input: "Vorrei 100 penne blu MO8422"
-  Output:
-  {
-    "entities": [
-      { "type": "quantity", "value": "100" },
-      { "type": "category", "value": "penne" },
-      { "type": "name", "value": "penne" },
-      { "type": "description", "value": "penne" },
-      { "type": "color", "value": "blu" },
-      { "type": "sku", "value": "MO8422" }
-    ]
-  }
+Input: "Avete prodotti di MidOcean taglia L?"
+Output:
+{
+  "entities": [
+    { "type": "supplier", "value": "MidOcean" },
+    { "type": "size", "value": "L" }
+  ]
+}
 
-  Input: "Avete prodotti di MidOcean taglia L?"
-  Output:
-  {
-    "entities": [
-      { "type": "supplier", "value": "MidOcean" },
-      { "type": "size", "value": "L" }
-    ]
-  }
-
-  Input: "Cerco una borraccia termica resistente"
-  Output:
-  {
-    "entities": [
-      { "type": "category", "value": "borracce" },
-      { "type": "name", "value": "borraccia termica" },
-      { "type": "description", "value": "resistente" }
-    ]
-  }
-
-Frase input utente:
+🧑‍💼 Frase utente:
 """
 ${text}
 """
-  `.trim()
+`.trim()
 
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -107,7 +131,7 @@ ${text}
     })
     return parsed.entities as ExtractedEntity[]
   } catch (err) {
-    logger.error('Parsing fallito in extractEntitiesLLM', {
+    logger.error('Parsing fallito in [extractEntitiesLLM]', {
       input: text,
       content,
       error: err

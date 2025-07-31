@@ -6,15 +6,7 @@ import type { ChatMessage, ChatSession } from './types'
 import { logger } from '@/lib/logger'
 
 
-// ===============================
-// 2. CRUD MESSAGGI CHAT
-// ===============================
 
-/**
- * Salva un messaggio nella collection chat_messages
- * @param msg - oggetto messaggio parziale (verifica che tutti i campi obbligatori siano presenti)
- * @returns id del messaggio appena salvato (string)
- */
 export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
 
