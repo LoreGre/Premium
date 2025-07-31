@@ -41,7 +41,7 @@ echo "✅ project_snapshot.md generato per ChatGPT (caricalo in chat se vuoi ful
 
 SNAPSHOT_FILE="chat_snapshot.md"
 TARGET_DIR="./components/chat/"
-EXTRA_FILES=("./app/api/chat/route.ts")
+EXTRA_FILES=("./app/api/chat/route.ts" "./app/api/chat/feedback/route.ts")
 
 echo "# Chat Snapshot - $(date)" > "$SNAPSHOT_FILE"
 

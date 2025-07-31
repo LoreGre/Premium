@@ -9,7 +9,7 @@ import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
 import { getProducts } from '@/components/chat/chat-get-products'
 import { detectContextShift } from '@/components/chat/chat-detect-context'
 import { generateChatResponse } from '@/components/chat/chat-response'
-import type { ChatAIResponse } from '@/components/chat/types'
+import type { ChatAIResponse, FallbackSource } from '@/components/chat/types'
 import {fallbackNoEntities,fallbackNoProducts, fallbackContextShift, fallbackNoIntent} from '@/components/chat/chat-fallback'
 import { logger } from '@/lib/logger'
 
@@ -50,17 +50,24 @@ export async function POST(req: Request) {
 
     // Step 6 – Recupero cronologia messaggi recenti (ultimi 10)
     const history = await getSessionHistoryMongo(sessionId, 10)
-    logger.info('[POST] History', { history })
+    logger.info('[POST] History', {
+      history: history.map(({ content, role, createdAt, entities }) => ({
+        content,
+        role,
+        createdAt,
+        entities
+      }))
+    })
 
-    // Step 7 – Ricerca prodotti con entità + embedding + contesto
+    // Step 7 – Detect context shift
+    const contextShift = detectContextShift(history, entities) // 👈 corretto
+
+    // Step 8 – Ricerca prodotti con entità + embedding + contesto
     const { products, entities: mergedEntities } = await getProducts(message, embedding, history, entities, 10)
     logger.info('[POST] Prodotti trovati', { count: products.length, skus: products.map(p => p.sku) })
 
-    // Step 8 – Detect context shift
-    const contextShift = detectContextShift(history, mergedEntities)
-
     let aiResponse: ChatAIResponse
-    let responseSource = 'default'
+    let responseSource: FallbackSource | 'standard-response' = 'standard-response'
 
     if (contextShift) {
       logger.warn('[POST] Cambio argomento rilevato – fallbackContextShift attivo')
@@ -96,7 +103,6 @@ export async function POST(req: Request) {
       }
     }
     
-
     logger.info('[POST] Risposta AI finalizzata', {
       source: responseSource,
       intent: aiResponse.intent,
@@ -136,7 +142,8 @@ export async function POST(req: Request) {
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-      _id: aiMessageId?.toString()
+      _id: aiMessageId?.toString(),
+      source: responseSource
     })
 
   } catch (err) {

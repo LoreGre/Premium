@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { UIMessage } from './types'
+import { FallbackNotice } from './chat-fallback-notice'
 
 function TypingDots() {
   return (
@@ -16,24 +17,8 @@ function TypingDots() {
   )
 }
 
-function FallbackNotice({ source }: { source: string }) {
-  const fallbackMessages: Record<string, string> = {
-    'fallback-no-entities': 'Non ho capito bene. Puoi specificare meglio cosa stai cercando?',
-    'fallback-no-products': 'Nessun prodotto trovato con queste caratteristiche.',
-    'fallback-context-shift': 'Hai cambiato argomento. Ti consiglio di aprire una nuova chat.',
-    'fallback-no-intent': 'Vuoi un consiglio, un confronto o delle informazioni?'
-  }
-  const msg = fallbackMessages[source] ?? null
-  if (!msg) return null
-
-  return (
-    <div className="mt-4 text-sm text-yellow-900 bg-yellow-100 border border-yellow-300 rounded-xl px-4 py-3">
-      ⚠️ {msg}
-    </div>
-  )
-}
-
 export function ChatMessageItem({ message }: { message: UIMessage }) {
+
   const isUser = message.role === 'user'
 
   const initial =
@@ -89,7 +74,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
   }
 
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex flex-col', isUser ? 'items-end' : 'items-start')}>
       <div
         className={cn(
           'max-w-[80%] rounded-2xl p-4 mb-4',
@@ -103,10 +88,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
           <TypingDots />
         ) : (
           <p className="whitespace-pre-line">{message.content}</p>
-        )}
-
-        {message.intent === 'clarify' && (!message.recommended || message.recommended.length === 0) && (
-          <FallbackNotice source={message.source ?? ''} />
         )}
 
         {!isUser && products.length > 0 && (
@@ -131,11 +112,24 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
-                      {product.size && (
-                        <p className="text-xs text-muted-foreground">
-                          Taglia: <span className="font-medium">{product.size}</span>
-                        </p>
-                      )}
+                      {/* badge container */}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                          SKU: {product.sku}
+                        </span>
+
+                        {product.color && (
+                          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded-full">
+                            Colore: {product.color}
+                          </span>
+                        )}
+
+                        {product.size && (
+                          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+                            Taglia: {product.size}
+                          </span>
+                        )}
+                      </div>
                       <p className={cn(
                         'text-xs mt-1 font-medium',
                         (product.qty ?? 0) > 0 ? 'text-green-600' : 'text-red-600'
@@ -143,7 +137,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                         ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
                       {reasons[product.sku] && (
-                        <p className="text-xs mt-1 text-blue-700 italic">
+                        <p className="text-xs mt-1 text-blue-600 italic">
                           <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
                         </p>
                       )}
@@ -209,6 +203,15 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
           </div>
         )}
       </div>
+      {!isUser &&
+        message.intent === 'clarify' &&
+        (!Array.isArray(message.recommended) || message.recommended.length === 0) &&
+        !!message.source && (
+          <div className="flex justify-start max-w-[80%] pl-4 mt-[-0.25rem] mb-2">
+            <FallbackNotice source={message.source} />
+          </div>
+      )}
     </div>
+    
   )
 }

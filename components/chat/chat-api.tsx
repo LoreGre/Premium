@@ -59,6 +59,7 @@ export async function sendChatMessage(
     recommended: Array.isArray(data.recommended) ? data.recommended : [],
     products: Array.isArray(data.products) ? data.products : [],
     intent: data.intent,
-    _id: data._id // <-- ora arriva dal backend
+    _id: data._id,
+    source: data.source
   }
 }

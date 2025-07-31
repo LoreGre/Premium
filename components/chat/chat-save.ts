@@ -21,7 +21,8 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
     intent: msg.intent,
     embedding: msg.embedding,
     feedback: msg.feedback,
-    entities: msg.entities
+    entities: msg.entities,
+    source: msg.source
   }
 
   const { insertedId } = await messages.insertOne(toInsert)

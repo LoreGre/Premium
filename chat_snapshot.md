@@ -1,4 +1,4 @@
-# Chat Snapshot - Gio 31 Lug 2025 14:59:45 CEST
+# Chat Snapshot - Gio 31 Lug 2025 18:51:45 CEST
 
 ## Directory tree (./components/chat/)
 
@@ -8,6 +8,7 @@
 ├── chat-container.tsx
 ├── chat-detect-context.ts
 ├── chat-exctract-entities.tsx
+├── chat-fallback-notice.tsx
 ├── chat-fallback.ts
 ├── chat-feedback.ts
 ├── chat-get-embedding.tsx
@@ -20,7 +21,7 @@
 ├── chat-sessions.ts
 └── types.ts
 
-1 directory, 16 files
+1 directory, 17 files
 
 ## File list & contents (.ts/.tsx only)
 
@@ -145,7 +146,8 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
         intent: res.intent,
         recommended: res.recommended,
         createdAt: new Date().toISOString(),
-        _id: res._id
+        _id: res._id,
+        source: res.source 
       }
 
       setMessages(prev =>
@@ -447,33 +449,29 @@ type FallbackParams = {
 
 // 🔁 Nessuna entità estratta
 export async function fallbackNoEntities(params: FallbackParams): Promise<ChatAIResponse> {
-  const { message, history } = params
+  const { message } = params
 
-  const lastTurns = (history ?? [])
-    .filter(m => m.role === 'user')
-    .slice(-2)
-    .map(m => `- ${m.content}`)
-    .join('\n')
-
-  const prompt = `
-L'utente ha inviato il seguente messaggio:
-"${message}"
-
-Negli ultimi messaggi ha detto:
-${lastTurns || '— (nessun messaggio precedente rilevante) —'}
-
-Non sono state rilevate entità strutturate. L'obiettivo è:
-- Chiedere chiarimenti utili per identificare ciò che cerca
-- Non suggerire prodotti generici a caso
-- Restituire una risposta breve e gentile che stimoli l'utente a specificare meglio
-
-Rispondi in questo formato JSON:
-{
-  "summary": "...",
-  "recommended": [],
-  "intent": "clarify",
-  "entities": []
-}`.trim()
+    const prompt = `
+    L'utente ha scritto:
+    "${message}"
+    
+    Non sono state rilevate entità strutturate.
+    
+    📌 Obiettivo:
+    - Rispondi direttamente all'utente usando il TU.
+    - Invitalo gentilmente a spiegare meglio che tipo di prodotto sta cercando.
+    - Guida l'utente con una domanda semplice per aiutarlo a fornire dettagli (es. cosa cerca: prodotto, colore, quantità, taglia...)
+    - Non proporre prodotti generici.
+    - Tono cordiale e naturale, da assistente conversazionale
+    - Usa emoji se serve
+    
+    Rispondi con JSON:
+    {
+      "summary": "...",
+      "recommended": [],
+      "intent": "clarify",
+      "entities": []
+    }`.trim()    
 
   return await getLLMResponse(prompt)
 }
@@ -483,31 +481,39 @@ export async function fallbackNoProducts(params: FallbackParams): Promise<ChatAI
   const { message, entities, history } = params
 
   const prompt = `
-Messaggio utente:
-"${message}"
-
-Entità trovate:
-${JSON.stringify(entities ?? [])}
-
-Contesto precedente:
-${
+  Messaggio utente:
+  "${message}"
+  
+  Entità trovate:
+  ${JSON.stringify(entities ?? [])}
+  
+  Contesto precedente:
+  ${
     (history ?? [])
       .filter(m => m.role === 'user')
       .slice(-1)
       .map(m => `- ${m.content}`)
-      .join('\n') || '—'}
+      .join('\n') || '—'
+  }
 
-Obiettivo:
-- Informare l'utente che al momento non ci sono prodotti compatibili
-- Eventualmente suggerire di modificare quantità, colori o tipo prodotto
-- Restituire una risposta strutturata come JSON:
-
-{
-  "summary": "...",
-  "recommended": [],
-  "intent": "clarify",
-  "entities": [...]
-}`.trim()
+  Non abbiamo trovato prodotti nel DB!
+  
+  📌 Obiettivo:
+  - **Nella summary, parla direttamente all'utente. Non usare mai frasi come "L'utente ha chiesto..."**
+  - Informare l'utente che non ci sono prodotti compatibili.
+  - Guida l'utente con una domanda semplice per aiutarlo a fornire dettagli (es. cosa cerca: prodotto, colore, quantità, taglia...)
+  - Non proporre prodotti generici
+  - Usa emoji se serve
+  - Tono cordiale e naturale, da assistente conversazionale
+  
+  Rispondi in formato JSON:
+  {
+    "summary": "...",
+    "recommended": [],
+    "intent": "clarify",
+    "entities": [...]
+  }`.trim()
+  
 
   return await getLLMResponse(prompt)
 }
@@ -516,33 +522,40 @@ Obiettivo:
 export async function fallbackNoIntent(params: FallbackParams): Promise<ChatAIResponse> {
   const { message, history, entities } = params
 
-  const lastTurns = (history ?? [])
-    .filter(m => m.role === 'user')
-    .slice(-2)
-    .map(m => `- ${m.content}`)
-    .join('\n')
+    const prompt = `
+    Messaggio utente:
+    "${message}"
+    
+    Entità trovate:
+    ${JSON.stringify(entities ?? [])}
+    
+    Conversazione recente:
+    ${
+      (history ?? [])
+        .filter(m => m.role === 'user')
+        .slice(-2)
+        .map(m => `- ${m.content}`)
+        .join('\n') || '—'
+    }
 
-  const prompt = `
-Messaggio utente:
-"${message}"
-
-Entità trovate:
-${JSON.stringify(entities ?? [])}
-
-Conversazione recente:
-${lastTurns || '—'}
-
-Obiettivo:
-- L'intento dell'utente non è chiaro (es. domanda troppo vaga, ambigua o incompleta)
-- Restituire un chiarimento strutturato in JSON:
-
-{
-  "summary": "...",
-  "recommended": [],
-  "intent": "clarify",
-  "entities": [...]
-}`.trim()
-
+    Non abbiamo capito l'intento!
+    
+    📌 Obiettivo:
+    - **Nella summary, parla direttamente all'utente. Non usare mai frasi come "L'utente ha chiesto..."**
+    - Guida l’utente con una domanda utile per capire cosa cerca: tipologia di prodotto, colore, quantità o altri dettagli.
+    - L'obiettivo è ottenere un messaggio con entità utili per avviare una ricerca prodotti.
+    - Non proporre prodotti generici
+    - Usa emoji se serve
+    - Tono cordiale e naturale, da assistente conversazionale
+    
+    Rispondi con JSON:
+    {
+      "summary": "...",
+      "recommended": [],
+      "intent": "clarify",
+      "entities": [...]
+    }`.trim()
+    
   return await getLLMResponse(prompt)
 }
 
@@ -550,36 +563,38 @@ Obiettivo:
 export async function fallbackContextShift(params: FallbackParams): Promise<ChatAIResponse> {
   const { message, history, entities } = params
 
-  const lastTurns = (history ?? [])
-    .filter(m => m.role === 'user')
-    .slice(-2)
-    .map(m => `- ${m.content}`)
-    .join('\n')
-
     const prompt = `
     Messaggio utente:
     "${message}"
     
     Messaggi precedenti:
-    ${lastTurns || '—'}
+    ${
+      (history ?? [])
+        .filter(m => m.role === 'user')
+        .slice(-2)
+        .map(m => `- ${m.content}`)
+        .join('\n') || '—'
+    }
     
     Entità rilevate:
     ${JSON.stringify(entities ?? [])}
+
+    L'utente ha cambiato completamente contesto nella stessa conversazione!
     
-    Il messaggio indica un cambio completo di argomento rispetto alla conversazione precedente.
+    📌 Obiettivo:
+    - **Nella summary, parla direttamente all'utente. Non usare mai frasi come "L'utente ha chiesto..."**
+    - Invita l’utente ad aprire una nuova chat per una ricerca più precisa.
+    - Non proporre prodotti generici
+    - Usa emoji se serve
+    - Tono cordiale e naturale, da assistente conversazionale
     
-    Obiettivo:
-    - Informare l'utente che il nuovo argomento non è compatibile con la sessione corrente
-    - Suggerire gentilmente di aprire una nuova chat per mantenere coerenza e risultati rilevanti
-    - Rispondere in questo formato:
-    
+    Rispondi in formato JSON:
     {
-      "summary": "Hai cambiato completamente argomento. Per cercare un nuovo tipo di prodotto, ti consiglio di aprire una nuova chat.",
+      "summary": "...",
       "recommended": [],
       "intent": "clarify",
       "entities": [...]
-    }`.trim()
-    
+    }`.trim()    
 
   return await getLLMResponse(prompt)
 }
@@ -624,6 +639,7 @@ import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { UIMessage } from './types'
+import { FallbackNotice } from './chat-fallback-notice'
 
 function TypingDots() {
   return (
@@ -635,24 +651,8 @@ function TypingDots() {
   )
 }
 
-function FallbackNotice({ source }: { source: string }) {
-  const fallbackMessages: Record<string, string> = {
-    'fallback-no-entities': 'Non ho capito bene. Puoi specificare meglio cosa stai cercando?',
-    'fallback-no-products': 'Nessun prodotto trovato con queste caratteristiche.',
-    'fallback-context-shift': 'Hai cambiato argomento. Ti consiglio di aprire una nuova chat.',
-    'fallback-no-intent': 'Vuoi un consiglio, un confronto o delle informazioni?'
-  }
-  const msg = fallbackMessages[source] ?? null
-  if (!msg) return null
-
-  return (
-    <div className="mt-4 text-sm text-yellow-900 bg-yellow-100 border border-yellow-300 rounded-xl px-4 py-3">
-      ⚠️ {msg}
-    </div>
-  )
-}
-
 export function ChatMessageItem({ message }: { message: UIMessage }) {
+
   const isUser = message.role === 'user'
 
   const initial =
@@ -724,10 +724,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
           <p className="whitespace-pre-line">{message.content}</p>
         )}
 
-        {message.intent === 'clarify' && (!message.recommended || message.recommended.length === 0) && (
-          <FallbackNotice source={message.source ?? ''} />
-        )}
-
         {!isUser && products.length > 0 && (
           <div className="mt-4 space-y-4">
             {products.map((product) => (
@@ -750,11 +746,24 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
-                      {product.size && (
-                        <p className="text-xs text-muted-foreground">
-                          Taglia: <span className="font-medium">{product.size}</span>
-                        </p>
-                      )}
+                      {/* badge container */}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                          SKU: {product.sku}
+                        </span>
+
+                        {product.color && (
+                          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded-full">
+                            Colore: {product.color}
+                          </span>
+                        )}
+
+                        {product.size && (
+                          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+                            Taglia: {product.size}
+                          </span>
+                        )}
+                      </div>
                       <p className={cn(
                         'text-xs mt-1 font-medium',
                         (product.qty ?? 0) > 0 ? 'text-green-600' : 'text-red-600'
@@ -762,7 +771,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                         ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
                       {reasons[product.sku] && (
-                        <p className="text-xs mt-1 text-blue-700 italic">
+                        <p className="text-xs mt-1 text-blue-600 italic">
                           <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
                         </p>
                       )}
@@ -827,8 +836,18 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
             )}
           </div>
         )}
+
+        {!isUser &&
+          message.intent === 'clarify' &&
+          (!Array.isArray(message.recommended) || message.recommended.length === 0) &&
+          !!message.source && (
+            <div className="pl-4 mt-[-0.5rem] mb-2">
+              <FallbackNotice source={message.source} />
+            </div>
+        )}
       </div>
     </div>
+    
   )
 }
 ---
@@ -922,7 +941,8 @@ export async function sendChatMessage(
     recommended: Array.isArray(data.recommended) ? data.recommended : [],
     products: Array.isArray(data.products) ? data.products : [],
     intent: data.intent,
-    _id: data._id // <-- ora arriva dal backend
+    _id: data._id,
+    source: data.source
   }
 }
 
@@ -952,7 +972,8 @@ export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<strin
     intent: msg.intent,
     embedding: msg.embedding,
     feedback: msg.feedback,
-    entities: msg.entities
+    entities: msg.entities,
+    source: msg.source
   }
 
   const { insertedId } = await messages.insertOne(toInsert)
@@ -1007,7 +1028,7 @@ export type ProductItem = {
   unit_price: number
   qty?: number
   supplier: string
-  category_name?: string[] // aggiornato qui
+  category_name?: string[] 
   thumbnail: string
   link?: string
   color?: string
@@ -1059,6 +1080,7 @@ export type ChatMessage = {
   feedback?: Feedback
   entities?: ExtractedEntity[]
   createdAt: string
+  source?: FallbackSource
 }
 
 // ------------------ MESSAGGIO CHAT (UI) ------------------
@@ -1067,7 +1089,7 @@ export type UIMessage = Omit<ChatMessage, 'session_id' | '_id'> & {
   _ui_id: string
   _id?: string // <-- solo string!
   isTyping?: boolean
-  source?: 'standard-response' | 'fallback-no-entities' | 'fallback-no-products' | 'fallback-context-shift' | 'fallback-no-intent'
+  source?: FallbackSource
 }
 
 // ------------------ SESSIONE CHAT ------------------
@@ -1084,8 +1106,67 @@ export type ChatApiResponse = {
   recommended: { sku: string; reason: string }[]
   products: ProductItem[]
   intent?: string
-  _id?: string // <-- AGGIUNGI QUESTO!
+  _id?: string
+  source?: FallbackSource
 }
+
+// ------------------ FALLBACK ------------------
+export type FallbackSource =
+  | 'fallback-no-entities'
+  | 'fallback-no-products'
+  | 'fallback-context-shift'
+  | 'fallback-no-intent'
+---
+### ./components/chat/chat-fallback-notice.tsx
+
+'use client'
+
+import type { FallbackSource } from './types'
+
+export function FallbackNotice({ source }: { source: FallbackSource }) {
+  const fallbackMap: Record<
+    FallbackSource,
+    { icon: string; label: string; action?: () => void; actionLabel?: string }
+  > = {
+    'fallback-no-entities': {
+      icon: '❓',
+      label: 'Richiesta poco chiara',
+    },
+    'fallback-no-products': {
+      icon: '📭',
+      label: 'Nessun prodotto trovato',
+    },
+    'fallback-context-shift': {
+      icon: '🔄',
+      label: 'Cambio argomento rilevato',
+      action: () => window.location.reload(),
+      actionLabel: '🔁 Ricomincia la chat'
+    },
+    'fallback-no-intent': {
+      icon: '🤔',
+      label: 'Intento non chiaro',
+    }
+  }
+
+  const fallback = fallbackMap[source]
+  if (!fallback) return null
+
+  return (
+    <p className="text-xs text-muted-foreground flex items-center gap-1 italic">
+      <span>{fallback.icon}</span>
+      <span>{fallback.label}</span>
+      {fallback.action && (
+        <button
+          onClick={fallback.action}
+          className="ml-2 underline text-blue-700 hover:text-blue-900 text-xs"
+        >
+          {fallback.actionLabel}
+        </button>
+      )}
+    </p>
+  )
+}
+
 ---
 ### ./components/chat/chat-response.ts
 
@@ -1149,6 +1230,8 @@ ${historyBlock}
 ${productBlock}
 
 🔸 CONSTRAINTS:
+- Usa un tono cordiale e diretto rivolto all'utente (dare del TU)
+- La summary deve parlare direttamente all'utente, **non usare mai "L'utente ha chiesto..."**
 - Suggerisci massimo 4 prodotti (solo se presenti e disponibili)
 - Se non ci sono prodotti disponibili, informa l’utente e suggerisci alternative pertinenti
 - Se è un confronto tra prodotti, segnala chiaramente quali SKU sono trovati e quali no
@@ -1396,7 +1479,7 @@ import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
 import { getProducts } from '@/components/chat/chat-get-products'
 import { detectContextShift } from '@/components/chat/chat-detect-context'
 import { generateChatResponse } from '@/components/chat/chat-response'
-import type { ChatAIResponse } from '@/components/chat/types'
+import type { ChatAIResponse, FallbackSource } from '@/components/chat/types'
 import {fallbackNoEntities,fallbackNoProducts, fallbackContextShift, fallbackNoIntent} from '@/components/chat/chat-fallback'
 import { logger } from '@/lib/logger'
 
@@ -1437,17 +1520,24 @@ export async function POST(req: Request) {
 
     // Step 6 – Recupero cronologia messaggi recenti (ultimi 10)
     const history = await getSessionHistoryMongo(sessionId, 10)
-    logger.info('[POST] History', { history })
+    logger.info('[POST] History', {
+      history: history.map(({ content, role, createdAt, entities }) => ({
+        content,
+        role,
+        createdAt,
+        entities
+      }))
+    })
 
-    // Step 7 – Ricerca prodotti con entità + embedding + contesto
+    // Step 7 – Detect context shift
+    const contextShift = detectContextShift(history, entities) // 👈 corretto
+
+    // Step 8 – Ricerca prodotti con entità + embedding + contesto
     const { products, entities: mergedEntities } = await getProducts(message, embedding, history, entities, 10)
     logger.info('[POST] Prodotti trovati', { count: products.length, skus: products.map(p => p.sku) })
 
-    // Step 8 – Detect context shift
-    const contextShift = detectContextShift(history, mergedEntities)
-
     let aiResponse: ChatAIResponse
-    let responseSource = 'default'
+    let responseSource: FallbackSource | 'standard-response' = 'standard-response'
 
     if (contextShift) {
       logger.warn('[POST] Cambio argomento rilevato – fallbackContextShift attivo')
@@ -1483,7 +1573,6 @@ export async function POST(req: Request) {
       }
     }
     
-
     logger.info('[POST] Risposta AI finalizzata', {
       source: responseSource,
       intent: aiResponse.intent,
@@ -1523,11 +1612,54 @@ export async function POST(req: Request) {
       products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-      _id: aiMessageId?.toString()
+      _id: aiMessageId?.toString(),
+      source: responseSource
     })
 
   } catch (err) {
     logger.error('[POST] Errore in /api/chat', { error: (err as Error).message })
+    return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
+  }
+}
+
+---
+### ./app/api/chat/feedback/route.ts
+
+import { NextResponse } from 'next/server'
+import { requireAuthUser } from '@/lib/auth/requireAuthUser'
+import { updateMessageFeedback } from '@/components/chat/chat-feedback'
+import { logger } from '@/lib/logger'
+
+const validRatings = ['positive', 'negative', 'neutral'] as const
+
+export async function POST(req: Request) {
+  try {
+    // Autenticazione unica via utility
+    const auth = await requireAuthUser(req)
+    if ('status' in auth) return auth
+
+    const { messageId, rating, comment } = await req.json()
+
+    if (!messageId || !rating) {
+      logger.warn('Dati mancanti nel feedback')
+      return NextResponse.json({ error: 'Dati mancanti' }, { status: 400 })
+    }
+
+    if (!validRatings.includes(rating)) {
+      logger.warn('Rating non valido nel feedback', { rating })
+      return NextResponse.json({ error: 'Rating non valido' }, { status: 400 })
+    }
+
+    if (typeof messageId !== 'string' || messageId.length !== 24) {
+      logger.warn('messageId non valido', { messageId })
+      return NextResponse.json({ error: 'ID messaggio non valido' }, { status: 400 })
+    }
+
+    await updateMessageFeedback(messageId, { rating, comment })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    logger.error('Errore API feedback', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }

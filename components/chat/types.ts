@@ -8,7 +8,7 @@ export type ProductItem = {
   unit_price: number
   qty?: number
   supplier: string
-  category_name?: string[] // aggiornato qui
+  category_name?: string[] 
   thumbnail: string
   link?: string
   color?: string
@@ -60,6 +60,7 @@ export type ChatMessage = {
   feedback?: Feedback
   entities?: ExtractedEntity[]
   createdAt: string
+  source?: FallbackSource
 }
 
 // ------------------ MESSAGGIO CHAT (UI) ------------------
@@ -68,7 +69,7 @@ export type UIMessage = Omit<ChatMessage, 'session_id' | '_id'> & {
   _ui_id: string
   _id?: string // <-- solo string!
   isTyping?: boolean
-  source?: 'standard-response' | 'fallback-no-entities' | 'fallback-no-products' | 'fallback-context-shift' | 'fallback-no-intent'
+  source?: FallbackSource
 }
 
 // ------------------ SESSIONE CHAT ------------------
@@ -85,5 +86,13 @@ export type ChatApiResponse = {
   recommended: { sku: string; reason: string }[]
   products: ProductItem[]
   intent?: string
-  _id?: string // <-- AGGIUNGI QUESTO!
+  _id?: string
+  source?: FallbackSource
 }
+
+// ------------------ FALLBACK ------------------
+export type FallbackSource =
+  | 'fallback-no-entities'
+  | 'fallback-no-products'
+  | 'fallback-context-shift'
+  | 'fallback-no-intent'

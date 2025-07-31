@@ -58,6 +58,8 @@ ${historyBlock}
 ${productBlock}
 
 🔸 CONSTRAINTS:
+- Usa un tono cordiale e diretto rivolto all'utente (dare del TU)
+- La summary deve parlare direttamente all'utente, **non usare mai "L'utente ha chiesto..."**
 - Suggerisci massimo 4 prodotti (solo se presenti e disponibili)
 - Se non ci sono prodotti disponibili, informa l’utente e suggerisci alternative pertinenti
 - Se è un confronto tra prodotti, segnala chiaramente quali SKU sono trovati e quali no

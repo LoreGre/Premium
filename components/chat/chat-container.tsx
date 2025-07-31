@@ -115,7 +115,8 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
         intent: res.intent,
         recommended: res.recommended,
         createdAt: new Date().toISOString(),
-        _id: res._id
+        _id: res._id,
+        source: res.source 
       }
 
       setMessages(prev =>
