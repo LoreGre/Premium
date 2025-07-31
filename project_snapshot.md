@@ -1,4 +1,4 @@
-# Project Premium snapshot - Mer 30 Lug 2025 17:53:34 CEST
+# Project Premium snapshot - Gio 31 Lug 2025 10:00:03 CEST
 
 ## Directory tree
 
@@ -49,17 +49,17 @@
 │   └── page.tsx
 ├── components
 │   ├── chat
-│   │   ├── chat-actions.ts
 │   │   ├── chat-api.tsx
+│   │   ├── chat-build-embedding.tsx
 │   │   ├── chat-container.tsx
-│   │   ├── chat-embedding.tsx
 │   │   ├── chat-exctract-entities.tsx
 │   │   ├── chat-feedback.ts
+│   │   ├── chat-get-embedding.tsx
+│   │   ├── chat-get-products.ts
 │   │   ├── chat-input.tsx
 │   │   ├── chat-message-item.tsx
-│   │   ├── chat-product-by-entities.ts
-│   │   ├── chat-products-rag.tsx
 │   │   ├── chat-response.ts
+│   │   ├── chat-save.ts
 │   │   ├── chat-search-mongo.ts
 │   │   ├── chat-sessions.ts
 │   │   └── types.ts
@@ -413,23 +413,25 @@ export async function POST(req: Request) {
 import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
-import { getEmbedding } from '@/components/chat/chat-embedding'
-import { saveMessageMongo } from '@/components/chat/chat-actions'
-import { getSessionHistoryMongo} from '@/components/chat/chat-sessions'
-import { getProductsByEntitiesAI } from '@/components/chat/chat-product-by-entities'
-//import { searchProductsRAG } from '@/components/chat/chat-products-rag'
+import { extractEntitiesLLM } from '@/components/chat/chat-exctract-entities'
+import { buildEmbeddingText } from '@/components/chat/chat-build-emedding'
+import { getEmbedding } from '@/components/chat/chat-get-embedding'
+import { saveMessageMongo } from '@/components/chat/chat-save'
+import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
+import { getProducts } from '@/components/chat/chat-get-products'
 import { generateChatResponse } from '@/components/chat/chat-response'
 import type { ChatAIResponse } from '@/components/chat/types'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
   try {
+    // Step 1 – Autenticazione utente
     const auth = await requireAuthUser(req)
     if ('status' in auth) return auth
     const { user } = auth
-
     logger.info('Utente autenticato', { userId: user.id })
 
+    // Step 2 – Parsing input e validazione
     const { message, sessionId } = await req.json()
     logger.info('Payload ricevuto', { message, sessionId })
 
@@ -438,45 +440,57 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Messaggio o sessione mancanti' }, { status: 400 })
     }
 
+    if (!ObjectId.isValid(sessionId)) {
+      throw new Error('ID di sessione non valido')
+    }
+    
     const sessionObjectId = new ObjectId(sessionId)
 
-    // Step 1 – Embedding
-    const embedding = await getEmbedding(message)
-    logger.info('Embedding generato', { preview: embedding.slice(0, 5) })
+    // Step 3 – Estrazione entità dal messaggio utente
+    const entities = await extractEntitiesLLM(message)
+    logger.info('[POST] Entità estratte', { entities })
 
-    // Step 2 – Recupera cronologia
-    const history = await getSessionHistoryMongo(sessionId, 5)
+    // Step 4 – Costruzione testo strutturato per embedding
+    const embeddingText = buildEmbeddingText(message, entities)
+    logger.info('[POST] Testo embedding strutturato', { embeddingText })
 
-    // Step 3 – Estrazione entità + ricerca prodotti
-    const { products, entities } = await getProductsByEntitiesAI(message, embedding, history, 10)
-    //const { products, entities } = await searchProductsRAG(message, embedding, history, 10)
-    logger.info('Prodotti trovati', { productsCount: products.length, skus: products.map(p => p.sku) })
+    // Step 5 – Generazione embedding dal testo strutturato
+    const embedding = await getEmbedding(embeddingText)
+    logger.info('[POST] Embedding generato', { preview: embedding.slice(0, 5) })
 
-    // Step 4 – Salva messaggio utente con entità
+    // Step 6 – Recupero cronologia messaggi recenti (ultimi 10)
+    const history = await getSessionHistoryMongo(sessionId, 10)
+    logger.info('[POST] History', { history })
+
+    // Step 7 – Ricerca prodotti con entità + embedding + contesto
+    const { products, entities: mergedEntities } = await getProducts(message, embedding, history, entities, 10)
+    logger.info('[POST] Prodotti trovati', { count: products.length, skus: products.map(p => p.sku) })
+
+    // Step 8 – Salvataggio messaggio utente con entità ed embedding
     const userMessageId = await saveMessageMongo({
       session_id: sessionObjectId,
       user_id: user.id,
       role: 'user',
       content: message,
       embedding,
-      entities,
+      entities: mergedEntities,
       createdAt: new Date().toISOString()
     })
-    logger.info('Messaggio utente salvato', { userMessageId })
+    logger.info('[POST] Messaggio utente salvato', { userMessageId })
 
-    // Step 5 – Genera risposta AI
+    // Step 9 – Generazione risposta AI
     const aiResponse: ChatAIResponse = await generateChatResponse({
       message,
       products,
-      contextMessages: history
+      contextMessages: history,
+      entities: mergedEntities
     })
-
-    logger.info('Risposta AI generata', {
+    logger.info('[POST] Risposta AI generata', {
       intent: aiResponse.intent,
       nRecommended: aiResponse.recommended.length
     })
 
-    // Step 6 – Salva risposta AI
+    // Step 10 – Salvataggio messaggio AI con raccomandazioni e entità
     const aiMessageId = await saveMessageMongo({
       session_id: sessionObjectId,
       user_id: user.id,
@@ -488,19 +502,20 @@ export async function POST(req: Request) {
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       createdAt: new Date().toISOString()
     })
-    logger.info('Messaggio AI salvato', { aiMessageId })
+    logger.info('[POST] Messaggio AI salvato', { aiMessageId })
 
-    // Step 7 – Risposta client
+    // Step 11 – Risposta JSON al client
     return NextResponse.json({
       summary: aiResponse.summary,
       recommended: aiResponse.recommended,
-      products: products.filter(p => aiResponse.recommended.some(r => p.sku === r.sku)),
+      products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
       intent: aiResponse.intent ?? 'suggestion',
       entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
       _id: aiMessageId?.toString()
     })
+
   } catch (err) {
-    logger.error('Errore in /api/chat', { error: (err as Error).message })
+    logger.error('[POST] Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }
@@ -6167,261 +6182,14 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
 'use server'
 
 import { getMongoCollection } from '@/lib/mongo/client'
-import type { ProductItem, ExtractedEntity } from './types'
+import type { ProductItem } from './types'
 import { logger } from '@/lib/logger'
 
-// ===============================
-// 4. RICERCA PRODOTTI HYBRID (Vector + Text)
-// ===============================
-
-/**
- * Ricerca prodotti tramite vector search su Mongo
- */
-/**
- * Ricerca prodotti tramite similarità semantica su embedding
- * con deduplica, priorità a qty > 0 e boost opzionale su SKU / Supplier
- */
-export async function searchByVectorMongo(
-    queryVector: number[],
-    limit = 5,
-    options?: {
-      preferSKU?: string[]
-      preferSupplier?: string[]
-    }
-  ): Promise<(ProductItem & { score: number })[]> {
-    const prodotti = await getMongoCollection<ProductItem>('prodotti')
-  
-    const rawResults = await prodotti.aggregate([
-      {
-        $vectorSearch: {
-          index: 'prodotti_vector_index',
-          path: 'embedding',
-          queryVector,
-          numCandidates: 100,
-          limit: limit * 2 // recuperiamo più risultati per deduplica e scoring
-        }
-      },
-      {
-        $project: {
-          sku: 1,
-          name: 1,
-          description: 1,
-          unit_price: 1,
-          qty: 1,
-          supplier: 1,
-          category_name: 1,
-          thumbnail: 1,
-          link: 1,
-          color: 1,
-          size: 1,
-          score: { $meta: 'vectorSearchScore' }
-        }
-      }
-    ]).toArray()
-  
-    // Deduplica per SKU (prende il primo trovato)
-    const seen = new Set<string>()
-    const deduplicated = rawResults.filter(p => {
-      if (!p.sku || seen.has(p.sku)) return false
-      seen.add(p.sku)
-      return true
-    })
-  
-    // Boost su SKU o Supplier
-    const preferSKU = options?.preferSKU?.map(String) ?? []
-    const preferSupplier = options?.preferSupplier?.map(String) ?? []
-  
-    const scored: (ProductItem & { score: number })[] = deduplicated.map(p => {
-      let finalScore = typeof p.score === 'number' ? p.score : 0
-    
-      if (preferSKU.includes(String(p.sku))) finalScore += 5
-      if (preferSupplier.includes(String(p.supplier))) finalScore += 2
-      if ((p.qty ?? 0) > 0) finalScore += 1
-    
-      return {
-        sku: p.sku,
-        name: p.name,
-        description: p.description,
-        unit_price: p.unit_price,
-        qty: p.qty,
-        supplier: p.supplier,
-        category_name: p.category_name,
-        thumbnail: p.thumbnail,
-        link: p.link,
-        color: p.color,
-        size: p.size,
-        score: finalScore
-      }
-    })
-  
-    // Ordina per score discendente e limita
-    const final = scored
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-  
-    return final
-  }
-  
-  
-  /**
-   * Ricerca prodotti tramite text search su Mongo
-   */
-  /**
-   * Ricerca prodotti tramite text search su Mongo con filtri opzionali
-   */
-  export async function searchByTextMongo(
-    query: string,
-    limit = 5,
-    filters?: Partial<Pick<ProductItem, 'supplier' | 'color' | 'size'>>
-  ): Promise<(ProductItem & { score: number })[]> {
-    const prodotti = await getMongoCollection<ProductItem>('prodotti')
-  
-    type MongoStage = Record<string, unknown>
-    const pipeline: MongoStage[] = [
-      {
-        $search: {
-          index: 'prodotti_index',
-          text: {
-            query,
-            path: ['name', 'description', 'category_name', 'color'],
-            fuzzy: { maxEdits: 2 }
-          }
-        }
-      }
-    ]
-  
-    // Applichiamo i filtri se presenti
-    if (filters && Object.keys(filters).length > 0) {
-      const matchStage: Record<string, unknown> = {}
-      if (filters.supplier) matchStage.supplier = filters.supplier
-      if (filters.color) matchStage.color = filters.color
-      if (filters.size) matchStage.size = filters.size
-      pipeline.push({ $match: matchStage })
-    }
-  
-    // Aggiungiamo il campo score con $meta, poi ordiniamo e proiettiamo
-    pipeline.push(
-      {
-        $addFields: {
-          score: { $meta: 'searchScore' }
-        }
-      },
-      { $sort: { score: -1 } },
-      { $limit: limit },
-      {
-        $project: {
-          sku: 1,
-          name: 1,
-          description: 1,
-          unit_price: 1,
-          qty: 1,
-          supplier: 1,
-          category_name: 1,
-          thumbnail: 1,
-          link: 1,
-          color: 1,
-          size: 1,
-          score: 1
-        }
-      }
-    )
-  
-    const results = await prodotti.aggregate(pipeline).toArray()
-    return results as (ProductItem & { score: number })[]
-  }
-  
-  
-  
-  /**
-   * Ricerca Hybrid combinata (vector + text + ranking)
-   */
-  /**
-   * Ricerca Hybrid combinata (vector + text + ranking)
-   */
-  type ProductHybridResult = ProductItem & {
-    vectorScore?: number
-    textScore?: number
-    hybridScore: number
-  }
-  
-  export async function searchHybridMongo(
-    query: string,
-    embedding: number[],
-    limit = 5,
-    filters?: Partial<Pick<ProductItem, 'supplier' | 'color' | 'size'>>,
-    entities: ExtractedEntity[] = [] // 👈 aggiunto parametro opzionale
-  ): Promise<ProductHybridResult[]> {
-    const [vectorResults, textResults] = await Promise.all([
-      searchByVectorMongo(embedding, limit * 2, {
-        preferSupplier: filters?.supplier ? [filters.supplier] : undefined
-      }),
-      searchByTextMongo(query, limit * 2, filters)
-    ])
-  
-    const merged: Record<string, ProductHybridResult> = {}
-  
-    for (const v of vectorResults) {
-      merged[v.sku] = {
-        ...v,
-        vectorScore: v.score,
-        hybridScore: v.score * 3
-      }
-    }
-  
-    for (const t of textResults) {
-      if (merged[t.sku]) {
-        merged[t.sku].textScore = t.score
-        merged[t.sku].hybridScore += t.score
-      } else {
-        merged[t.sku] = {
-          ...t,
-          textScore: t.score,
-          hybridScore: t.score * 3
-        }
-      }
-    }
-  
-    let final = Object.values(merged)
-  
-    // 🧠 Applica filtro coerente con entità estratte
-    if (entities.length > 0) {
-      final = final.filter(p =>
-        entities.every(e => {
-          if (e.type === 'category') {
-            return (p.category_name || []).some(c =>
-              c.toLowerCase().includes(String(e.value).toLowerCase())
-            )
-          }
-          if (e.type === 'color') {
-            return String(p.color || '').toLowerCase().includes(String(e.value).toLowerCase())
-          }
-          if (e.type === 'size') {
-            return String(p.size || '').toLowerCase().includes(String(e.value).toLowerCase())
-          }
-          return true
-        })
-      )
-    }
-  
-    final = final
-      .sort((a, b) => b.hybridScore - a.hybridScore)
-      .slice(0, limit)
-  
-    logger.info('[searchHybridMongo] risultati finali', {
-      count: final.length,
-      skus: final.map(x => x.sku)
-    })
-  
-    return final
-  }
-  
-
-  
-  export async function vectorMongoSearch(
-    embedding: number[],
-    limit = 10
-  ): Promise<ProductItem[]> {
-    const prodotti = await getMongoCollection<ProductItem>('prodotti')
+export async function vectorMongoSearch(
+  embedding: number[],
+  limit = 10
+): Promise<ProductItem[]> {
+  const prodotti = await getMongoCollection<ProductItem>('prodotti')
   
     const pipeline = [
       {
@@ -6478,15 +6246,26 @@ const openai = new OpenAI()
 export async function extractEntitiesLLM(text: string): Promise<ExtractedEntity[]> {
   const prompt = `
   Estrai entità strutturate dalla frase utente seguente, interpretando correttamente anche forme al plurale, femminili, abbreviate o colloquiali (es. "rosse", "10 pezzi", "XL", "midocean", "bluette").
-  
+  Considera che di solito nel catalogo category è molto poco flessibile.
+  Invece name e description possono accettare stringhe lunghe molto ricercabili.
+
   TIPI DI ENTITÀ:
   - sku: codice prodotto (es. "5071", "MO8422", "AR1010")
   - quantity: quantità richiesta o minima (es. "10", "almeno 100", "200", "10 pezzi", "una cinquantina")
   - color: nome del colore (es. "rosso", "blu", "giallo", "rosse", "rosa acceso")
   - size: taglia (es. "S", "M", "L", "XL", "extra large")
-  - category: categoria prodotto (es. "maglietta", "penna", "zaino", "tazze", "borracce")
-  - supplier: nome del fornitore (es. "MidOcean", "GiftLine", "HiGift")
-  - other: qualsiasi altra informazione strutturata utile
+
+  - category: categoria standard e formale del prodotto, corrispondente alle classificazioni usate nel catalogo (es. "maglietta", "penna", "zaino", "tazze", "borracce").
+    Questa entità è solitamente rigida e meno soggetta a variazioni.
+
+  - name: nome commerciale, marchio o denominazione specifica del prodotto. Può includere descrizioni sintetiche o termini più liberi usati per identificare un prodotto (es. "borraccia termica", "zaino trekking", "penne stilografiche").
+
+  - description: parole chiave o frasi brevi che descrivono caratteristiche, qualità o funzionalità del prodotto. Viene estratta da descrizioni più lunghe e può includere aggettivi o attributi rilevanti (es. "resistente", "con filtro integrato", "leggero").
+
+  - supplier: nome del fornitore o marchio (es. "MidOcean", "GiftLine", "HiGift")
+
+  - other: qualsiasi altra informazione strutturata utile che non rientra nelle categorie sopra.
+
   
   FORMAT OUTPUT:
   Restituisci solo un oggetto JSON valido con questo formato:
@@ -6497,29 +6276,41 @@ export async function extractEntitiesLLM(text: string): Promise<ExtractedEntity[
     ]
   }
 
-ESEMPI DI INPUT/OUTPUT:
+  ESEMPI DI INPUT/OUTPUT:
 
-Input: "Vorrei 100 penne blu MO8422"
-Output:
-{
-  "entities": [
-    { "type": "quantity", "value": "100" },
-    { "type": "category", "value": "penne" },
-    { "type": "color", "value": "blu" },
-    { "type": "sku", "value": "MO8422" }
-  ]
-}
+  Input: "Vorrei 100 penne blu MO8422"
+  Output:
+  {
+    "entities": [
+      { "type": "quantity", "value": "100" },
+      { "type": "category", "value": "penne" },
+      { "type": "name", "value": "penne" },
+      { "type": "description", "value": "penne" },
+      { "type": "color", "value": "blu" },
+      { "type": "sku", "value": "MO8422" }
+    ]
+  }
 
-Input: "Avete prodotti di MidOcean taglia L?"
-Output:
-{
-  "entities": [
-    { "type": "supplier", "value": "MidOcean" },
-    { "type": "size", "value": "L" }
-  ]
-}
+  Input: "Avete prodotti di MidOcean taglia L?"
+  Output:
+  {
+    "entities": [
+      { "type": "supplier", "value": "MidOcean" },
+      { "type": "size", "value": "L" }
+    ]
+  }
 
-Frase utente:
+  Input: "Cerco una borraccia termica resistente"
+  Output:
+  {
+    "entities": [
+      { "type": "category", "value": "borracce" },
+      { "type": "name", "value": "borraccia termica" },
+      { "type": "description", "value": "resistente" }
+    ]
+  }
+
+Frase input utente:
 """
 ${text}
 """
@@ -6536,7 +6327,7 @@ ${text}
     ],
     temperature: 0,
     response_format: { type: 'json_object' },
-    max_tokens: 600
+    max_tokens: 800
   })
 
   const content = res.choices?.[0]?.message?.content
@@ -6776,134 +6567,30 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
 }
 
 ---
-### ./components/chat/chat-product-by-entities.ts
+### ./components/chat/chat-get-embedding.tsx
 
-'use server'
+import { OpenAI } from 'openai'
 
-import type { Filter } from 'mongodb'
-import { getMongoCollection } from '@/lib/mongo/client'
-import type { ProductItem, ChatMessage, ExtractedEntity } from './types'
-import { extractEntitiesLLM } from './chat-exctract-entities'
-import { searchHybridMongo } from './chat-search-mongo'
-import { logger } from '@/lib/logger'
+const openai = new OpenAI()
+const EMBEDDING_MODEL = 'text-embedding-3-small'
 
 
-function mergeEntitiesAcrossTurns(
-  history: ChatMessage[],
-  currentEntities: ExtractedEntity[]
-): ExtractedEntity[] {
-  const entityMap = new Map<string, ExtractedEntity>()
+export async function getEmbedding(text: string): Promise<number[]> {
+  // Sanitize: newline, lower, trim, collapse spaces
+  const input = text.replace(/\n/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim()
 
-  for (const msg of history) {
-    if (msg.role !== 'user') continue
-    const pastEntities = msg.entities || []
-    for (const ent of pastEntities) {
-      const key = `${ent.type}:${String(ent.value).toLowerCase()}`
-      entityMap.set(key, ent)
-    }
+  const res = await openai.embeddings.create({
+    model: EMBEDDING_MODEL,
+    input
+  })
+
+  const embedding = res.data?.[0]?.embedding
+
+  if (!embedding || !Array.isArray(embedding)) {
+    throw new Error('Embedding non generato o malformato da OpenAI')
   }
 
-  for (const ent of currentEntities) {
-    const key = `${ent.type}:${String(ent.value).toLowerCase()}`
-    entityMap.set(key, ent)
-  }
-
-  return Array.from(entityMap.values())
-}
-
-export async function getProductsByEntitiesAI(
-  message: string,
-  embedding: number[],
-  history: ChatMessage[],
-  maxResults = 10
-): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
-  const currentEntities = await extractEntitiesLLM(message)
-  logger.info('[getProductsByEntitiesAI] Entità estratte dal messaggio', { currentEntities })
-
-  const entities = mergeEntitiesAcrossTurns(history, currentEntities)
-  logger.info('[getProductsByEntitiesAI] Entità finali dopo fusione', { entities })
-
-  if (entities.length === 0) {
-    logger.warn('[getProductsByEntitiesAI] Nessuna entità trovata')
-    return { products: [], entities: [] }
-  }
-
-  const query: Filter<ProductItem> = {}
-  const colori: string[] = []
-  const skuList: string[] = []
-
-  for (const e of entities) {
-    if (e.type === 'sku' && typeof e.value === 'string') {
-      skuList.push(e.value)
-    }
-
-    if (e.type === 'quantity') {
-      const qty = typeof e.value === 'number' ? e.value : parseInt(String(e.value), 10)
-      if (!isNaN(qty)) {
-        query.qty = { $gte: 0 }
-      }
-    }
-
-    if (e.type === 'color' && typeof e.value === 'string') {
-      colori.push(e.value.toLowerCase())
-    }
-
-    if (e.type === 'size' && typeof e.value === 'string') {
-      query.taglia = e.value
-    }
-
-    if (e.type === 'category' && typeof e.value === 'string') {
-      query.category_name = { $in: [e.value] }
-    }
-
-    if (e.type === 'supplier' && typeof e.value === 'string') {
-      query.supplier = e.value
-    }
-  }
-
-  if (skuList.length > 0) {
-    query.sku = { $in: skuList }
-  }
-
-  
-
-  const prodottiColl = await getMongoCollection<ProductItem>('prodotti')
-
-  const skuEntities = entities.filter(e => e.type === 'sku')
-  if (skuEntities.length === 1) {
-    const single = await prodottiColl.findOne({ sku: String(skuEntities[0].value) })
-    logger.info('[getProductsByEntitiesAI] SKU singolo, prodotto diretto', {
-      sku: skuEntities[0].value,
-      trovato: !!single
-    })
-    return { products: single ? [single] : [], entities }
-  }
-
-  let products: ProductItem[] = []
-  if (Object.keys(query).length > 0) {
-    products = await prodottiColl.find(query).limit(maxResults).toArray()
-    logger.info('[getProductsByEntitiesAI] Prodotti trovati con query strutturata', {
-      count: products.length,
-      query
-    })
-  }
-
-  if (products.length === 0) {
-    logger.info('[getProductsByEntitiesAI] Nessun prodotto trovato, fallback a searchHybridMongo')
-
-
-    const hybridResults = await searchHybridMongo(
-        message,
-        embedding,
-        maxResults,
-        {}, // ❌ niente filtri rigidi
-        entities
-      )
-
-    products = hybridResults
-  }
-
-  return { products, entities }
+  return embedding
 }
 
 ---
@@ -6975,6 +6662,59 @@ export async function sendChatMessage(
 }
 
 ---
+### ./components/chat/chat-save.ts
+
+'use server'
+
+import { ObjectId } from 'mongodb'
+import { getMongoCollection } from '@/lib/mongo/client'
+import type { ChatMessage, ChatSession } from './types'
+import { logger } from '@/lib/logger'
+
+
+// ===============================
+// 2. CRUD MESSAGGI CHAT
+// ===============================
+
+/**
+ * Salva un messaggio nella collection chat_messages
+ * @param msg - oggetto messaggio parziale (verifica che tutti i campi obbligatori siano presenti)
+ * @returns id del messaggio appena salvato (string)
+ */
+export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
+  const messages = await getMongoCollection<ChatMessage>('chat_messages')
+
+  const toInsert: ChatMessage = {
+    session_id: typeof msg.session_id === 'string' ? new ObjectId(msg.session_id) : msg.session_id!,
+    user_id: msg.user_id!,
+    role: msg.role!,
+    content: msg.content!,
+    createdAt: msg.createdAt || new Date().toISOString(),
+    products: msg.products,
+    recommended: msg.recommended,
+    intent: msg.intent,
+    embedding: msg.embedding,
+    feedback: msg.feedback,
+    entities: msg.entities
+  }
+
+  const { insertedId } = await messages.insertOne(toInsert)
+
+  const sessions = await getMongoCollection<ChatSession>('chat_sessions')
+  await sessions.updateOne(
+    { _id: toInsert.session_id },
+    { $set: { updatedAt: new Date().toISOString() } }
+  )
+
+  logger.info('Messaggio salvato su Mongo', {
+    role: msg.role,
+    session_id: toInsert.session_id.toString(),
+    messageId: insertedId.toString()
+  })
+
+  return insertedId.toString()
+}
+---
 ### ./components/chat/chat-feedback.ts
 
 'use server'
@@ -6984,15 +6724,7 @@ import { getMongoCollection } from '@/lib/mongo/client'
 import type { ChatMessage } from './types'
 import { logger } from '@/lib/logger'
 
-// ===============================
-// 6. FEEDBACK SU MESSAGGIO (aggiornamento)
-// ===============================
 
-/**
- * Aggiorna il feedback di un messaggio (PATCH)
- * @param messageId - Mongo ObjectId del messaggio
- * @param feedback - oggetto feedback ({ rating, comment?, timestamp })
- */
 export async function updateMessageFeedback(
     messageId: string,
     feedback: { rating: 'positive' | 'negative' | 'neutral', comment?: string }
@@ -7027,10 +6759,17 @@ export type ProductItem = {
 }
 
 // ------------------ ENTITÀ ------------------
-export type ExtractedEntity = {
-  type: 'color' | 'size' | 'category' | 'sku' | 'quantity' | 'supplier' | 'other'
-  value: string | number
-}
+export type ExtractedEntity =
+  | { type: 'color'; value: string }
+  | { type: 'size'; value: string }
+  | { type: 'category'; value: string }
+  | { type: 'sku'; value: string }
+  | { type: 'quantity'; value: number }
+  | { type: 'supplier'; value: string }
+  | { type: 'name'; value: string }
+  | { type: 'description'; value: string }
+  | { type: 'other'; value: string | number }
+
 
 // ------------------ RISPOSTA AI ------------------
 export type ChatAIResponse = {
@@ -7089,59 +6828,6 @@ export type ChatApiResponse = {
   products: ProductItem[]
   intent?: string
   _id?: string // <-- AGGIUNGI QUESTO!
-}
----
-### ./components/chat/chat-actions.ts
-
-'use server'
-
-import { ObjectId } from 'mongodb'
-import { getMongoCollection } from '@/lib/mongo/client'
-import type { ChatMessage, ChatSession } from './types'
-import { logger } from '@/lib/logger'
-
-
-// ===============================
-// 2. CRUD MESSAGGI CHAT
-// ===============================
-
-/**
- * Salva un messaggio nella collection chat_messages
- * @param msg - oggetto messaggio parziale (verifica che tutti i campi obbligatori siano presenti)
- * @returns id del messaggio appena salvato (string)
- */
-export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
-  const messages = await getMongoCollection<ChatMessage>('chat_messages')
-
-  const toInsert: ChatMessage = {
-    session_id: typeof msg.session_id === 'string' ? new ObjectId(msg.session_id) : msg.session_id!,
-    user_id: msg.user_id!,
-    role: msg.role!,
-    content: msg.content!,
-    createdAt: msg.createdAt || new Date().toISOString(),
-    products: msg.products,
-    recommended: msg.recommended,
-    intent: msg.intent,
-    embedding: msg.embedding,
-    feedback: msg.feedback,
-    entities: msg.entities
-  }
-
-  const { insertedId } = await messages.insertOne(toInsert)
-
-  const sessions = await getMongoCollection<ChatSession>('chat_sessions')
-  await sessions.updateOne(
-    { _id: toInsert.session_id },
-    { $set: { updatedAt: new Date().toISOString() } }
-  )
-
-  logger.info('Messaggio salvato su Mongo', {
-    role: msg.role,
-    session_id: toInsert.session_id.toString(),
-    messageId: insertedId.toString()
-  })
-
-  return insertedId.toString()
 }
 ---
 ### ./components/chat/chat-response.ts
@@ -7286,100 +6972,71 @@ ${productBlock}
   return parsed
 }
 ---
-### ./components/chat/chat-products-rag.tsx
+### ./components/chat/chat-build-embedding.tsx
 
-'use server'
+import type { ExtractedEntity } from './types'
 
-import { extractEntitiesLLM } from './chat-exctract-entities'
-import { vectorMongoSearch } from './chat-search-mongo'
-import type { ChatMessage, ExtractedEntity, ProductItem } from './types'
-import { logger } from '@/lib/logger'
-
-/**
- * Esegue la ricerca prodotti basata su embedding + entità combinate da più turni.
- * 
- * @param currentMessage - Il messaggio utente corrente
- * @param embedding - L'embedding del messaggio corrente
- * @param contextMessages - Messaggi precedenti della sessione
- * @param maxResults - Numero massimo di prodotti da restituire
- */
-export async function searchProductsRAG(
-  currentMessage: string,
-  embedding: number[],
-  contextMessages: ChatMessage[],
-  //maxResults = 10
-): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
-  // Step 1 – Estrai entità dal messaggio corrente
-  const currentEntities = await extractEntitiesLLM(currentMessage)
-  logger.info('[searchProductsRAG] Entità dal messaggio corrente', { currentEntities })
-
-  // Step 2 – Estrai entità storiche salvate nei messaggi precedenti
-  const historicalEntities = contextMessages
-    .filter(m => m.role === 'user' && Array.isArray(m.entities))
-    .flatMap(m => m.entities as ExtractedEntity[])
-
-  logger.info('[searchProductsRAG] Entità storiche', { historicalEntitiesCount: historicalEntities.length })
-
-  // Step 3 – Fusione entità tra turni
-  const mergedEntities = mergeEntitiesAcrossTurns([...historicalEntities, ...currentEntities])
-  logger.info('[searchProductsRAG] Entità combinate finali', { mergedEntities })
-
-  // Step 4 – Esegui una sola vector search flessibile su Mongo
-  const products = await vectorMongoSearch(embedding)
-  logger.info('[searchProductsRAG] Prodotti trovati', { count: products.length })
-
-  return { products, entities: mergedEntities }
-}
-
-/**
- * Fusione delle entità tra turni: preserva l’ordine cronologico inverso (priorità alle più recenti),
- * deduplicando per combinazione type + valore normalizzato.
- */
-function mergeEntitiesAcrossTurns(all: ExtractedEntity[]): ExtractedEntity[] {
-  const seen = new Set<string>()
-  const merged: ExtractedEntity[] = []
-
-  for (const e of [...all].reverse()) {
-    if (!e?.type || !e?.value) continue
-    const key = `${e.type}:${String(e.value).toLowerCase().trim()}`
-    if (!seen.has(key)) {
-      merged.push(e)
-      seen.add(key)
-    }
-  }
-
-  return merged.reverse() // opzionale: mantiene l'ordine dal più vecchio al più recente
+export function buildEmbeddingText(message: string, entities: ExtractedEntity[]): string {
+  const entityParts = entities.map(e => `${e.type}: ${e.value}`)
+  return [message, ...entityParts].join(' | ')
 }
 
 ---
-### ./components/chat/chat-embedding.tsx
+### ./components/chat/chat-get-products.ts
 
-import { OpenAI } from 'openai'
+'use server'
 
-const openai = new OpenAI()
-const EMBEDDING_MODEL = 'text-embedding-3-small'
+import type { ProductItem, ChatMessage, ExtractedEntity } from './types'
+import { vectorMongoSearch } from './chat-search-mongo'
+import { logger } from '@/lib/logger'
 
-/**
- * Genera embedding vettoriale per testo (sanitize incluso)
- * @param text - testo da embeddare
- * @returns number[] embedding OpenAI
- */
-export async function getEmbedding(text: string): Promise<number[]> {
-  // Sanitize: newline, lower, trim, collapse spaces
-  const input = text.replace(/\n/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim()
+function mergeEntitiesAcrossTurns(
+  history: ChatMessage[],
+  currentEntities: ExtractedEntity[]
+): ExtractedEntity[] {
+  const entityMap = new Map<string, ExtractedEntity>()
 
-  const res = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input
-  })
-
-  const embedding = res.data?.[0]?.embedding
-
-  if (!embedding || !Array.isArray(embedding)) {
-    throw new Error('Embedding non generato o malformato da OpenAI')
+  for (const msg of history) {
+    if (msg.role !== 'user') continue
+    const pastEntities = msg.entities || []
+    for (const ent of pastEntities) {
+      const key = `${ent.type}:${String(ent.value).toLowerCase()}`
+      entityMap.set(key, ent)
+    }
   }
 
-  return embedding
+  for (const ent of currentEntities) {
+    const key = `${ent.type}:${String(ent.value).toLowerCase()}`
+    entityMap.set(key, ent)
+  }
+
+  return Array.from(entityMap.values())
+}
+
+export async function getProducts(
+  message: string,
+  embedding: number[],
+  history: ChatMessage[],
+  entities: ExtractedEntity[],
+  maxResults = 10
+): Promise<{ products: ProductItem[]; entities: ExtractedEntity[] }> {
+  const mergedEntities = mergeEntitiesAcrossTurns(history, entities)
+  logger.info('[getProducts] Entità finali dopo fusione', { entities: mergedEntities })
+
+  if (mergedEntities.length === 0) {
+    logger.warn('[getProducts] Nessuna entità trovata')
+    return { products: [], entities: [] }
+  }
+
+  const products = await vectorMongoSearch(
+    embedding,
+    maxResults
+  )
+  logger.info('[getProducts] Prodotti trovati con vectorMongoSearch', {
+    count: products.length
+  })
+
+  return { products, entities: mergedEntities }
 }
 
 ---
@@ -7402,15 +7059,7 @@ return JSON.parse(JSON.stringify(obj, (key, value) => {
 }))
 }
 
-// ===============================
-// 1. SESSIONI CHAT
-// ===============================
 
-/**
- * Crea una nuova sessione chat per uno user
- * @param userId - id univoco utente autenticato
- * @returns sessionId MongoDB come stringa
- */
 export async function createChatSession(userId: string): Promise<string> {
     const sessions = await getMongoCollection<ChatSession>('chat_sessions')
     const now = new Date().toISOString()
@@ -7425,17 +7074,6 @@ export async function createChatSession(userId: string): Promise<string> {
 
 
 
-
-  // ===============================
-// 3. HISTORY CONVERSAZIONE (memoria breve)
-// ===============================
-
-/**
- * Restituisce la history della sessione (solo role+content)
- * Usato per "memoria breve" del prompt
- * @param sessionId - id della sessione
- * @param limit - quanti messaggi vuoi recuperare (default 5)
- */
 export async function getSessionHistoryMongo(sessionId: string, limit = 10) {
     const messages = await getMongoCollection<ChatMessage>('chat_messages')
     const history = await messages
