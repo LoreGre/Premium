@@ -1,7 +1,7 @@
 'use server'
 
 import { getMongoCollection } from '@/lib/mongo/client'
-import type { ProductItem, ExtractedEntity } from './types'
+import type { ProductItem } from './types'
 import { logger } from '@/lib/logger'
 
 export async function vectorMongoSearch(
