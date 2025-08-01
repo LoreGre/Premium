@@ -1,4 +1,4 @@
-# Chat Snapshot - Ven  1 Ago 2025 17:09:04 CEST
+# Chat Snapshot - Ven  1 Ago 2025 18:23:03 CEST
 
 ## Directory tree (./components/chat/)
 
@@ -213,7 +213,7 @@ export async function searchHybridMongo(
   embedding: number[],
   query: string,
   entities: ExtractedEntity[] = [],
-  limit = 6,
+  limit = 10,
   vectorPriority = 0,
   textPriority = 0
 ): Promise<ProductItem[]> {
@@ -379,26 +379,35 @@ export async function searchHybridMongo(
 ### ./components/chat/chat-detect-context.ts
 
 import type { ChatMessage, ExtractedEntity } from './types'
+import { logger } from '@/lib/logger'
 
 export function detectContextShift(history: ChatMessage[], currentEntities: ExtractedEntity[]): boolean {
-    const currentTerms = new Set(
-      currentEntities.filter(e => e.type === 'terms').flatMap(e => e.value as string[])
-    )
-  
-    const pastTerms = new Set(
-      history.flatMap(m =>
-        m.role === 'user'
-          ? (m.entities ?? [])
-              .filter(e => e.type === 'terms')
-              .flatMap(e => e.value as string[])
-          : []
-      )
-    )
-  
-    const overlap = [...currentTerms].filter(term => pastTerms.has(term))
-    return overlap.length === 0 && currentTerms.size > 0 && pastTerms.size > 0
-  }
-  
+  const currentTerms = new Set(
+    currentEntities.filter(e => e.type === 'terms').flatMap(e => e.value as string[])
+  )
+
+  const userMessages = history.filter(m => m.role === 'user')
+  const lastUserMsg = userMessages[userMessages.length - 1] ?? null
+
+  const pastTerms = new Set(
+    (lastUserMsg?.entities ?? [])
+      .filter(e => e.type === 'terms')
+      .flatMap(e => e.value as string[])
+  )
+
+  const overlap = [...currentTerms].filter(term => pastTerms.has(term))
+
+  console.log('[ContextShift] currentTerms:', [...currentTerms])
+  console.log('[ContextShift] pastTerms:', [...pastTerms])
+  console.log('[ContextShift] overlap:', overlap)
+
+  return (
+    overlap.length === 0 &&
+    currentTerms.size > 0 &&
+    pastTerms.size > 0
+  )
+}
+
 ---
 ### ./components/chat/chat-exctract-entities.tsx
 
@@ -1315,7 +1324,7 @@ export function FallbackNotice({ source }: { source: FallbackSource }) {
       label: 'Richiesta poco chiara',
     },
     'fallback-no-products': {
-      icon: '📭',
+      icon: '📦',
       label: 'Nessun prodotto trovato',
     },
     'fallback-context-shift': {
@@ -1423,14 +1432,18 @@ ${productBlock}
 🔸 CONSTRAINTS:
 - Usa un tono cordiale e diretto rivolto all'utente (dare del TU)
 - La summary deve parlare direttamente all'utente, **non usare mai "L'utente ha chiesto..."**
-- Suggerisci massimo 3 prodotti (solo se presenti e disponibili)
+- Suggerisci massimo 3 prodotti, solo se presenti e disponibili
 - Se non ci sono prodotti disponibili, informa l’utente e suggerisci alternative pertinenti
 - Se è un confronto tra prodotti, segnala chiaramente quali SKU sono trovati e quali no
 - Motiva ogni prodotto suggerito (campo "reason")
-- Classifica l'intento tra: info, purchase, compare, clarify, other
-- Se il messaggio non richiede un'azione specifica (es: mostrare prodotti, confrontare, comprare) → usa "other"
-- Se la frase è generica, confusa, o riguarda strategie, fornitori, test, processi… → usa sempre "other"
-- Se hai dubbi sull’intento, NON usare "info" per default. Usa "clarify" o "other".
+- Classifica l'intento tra: purchase, compare, info, clarify, other
+- Usa:
+  - \`purchase\` se suggerisci prodotti acquistabili o pertinenti
+  - \`compare\` se l’utente chiede un confronto diretto
+  - \`info\` se la risposta fornisce suggerimenti utili ma non è direttamente orientata all'acquisto
+  - \`clarify\` se mancano dettagli essenziali per aiutare l’utente, se l'utente chiede qualcosa di generico come "un gadget", "un prodotto", "qualcosa per un evento" senza altre specifiche
+  - \`other\` solo per richieste generiche, non legate a prodotti (es. test, fornitori, strategie)
+
 
 🔸 FORMAT_OUTPUT:
 {
@@ -1575,7 +1588,6 @@ import { ObjectId } from 'mongodb'
 import { getSessionHistoryMongo } from './chat-sessions'
 import { generateChatResponse } from './chat-response'
 import { fallbackNoEntities, fallbackNoProducts, fallbackContextShift, fallbackNoIntent } from './chat-fallback'
-import { detectContextShift } from './chat-detect-context'
 import { shouldUseOnlySkuSearch, getSkuValues, findProductsBySku } from './chat-search-sku'
 import { searchHybridMongo } from './chat-search-mongo'
 import type { ChatMessage, ExtractedEntity, ProductItem, FallbackSource, ChatAIResponse } from './types'
@@ -1631,36 +1643,20 @@ export async function handleChatProductSearch(params: {
   responseSource: FallbackSource | 'standard-response'
 }> {
   const { message, sessionId, entities, embedding } = params
+  const history = await getSessionHistoryMongo(sessionId, 5)
 
-  const history = await getSessionHistoryMongo(sessionId, 10)
-
-  // 🔁 CAMBIO DI CONTESTO
-  if (detectContextShift(history, entities)) {
-    logger.warn('[ChatHandler] Context shift rilevato')
-    const aiResponse = await fallbackContextShift({
-      message,
-      embedding,
-      history,
-      entities
-    })
-    return {
-      aiResponse,
-      products: [],
-      mergedEntities: entities,
-      responseSource: 'fallback-context-shift'
-    }
-  }
-
-  // 🔀 Merge completo dopo il controllo context shift
+  // 🔀 Merge sempre subito
   const { mergedEntities } = getMergedContext(history, entities, [])
 
-  // 🔎 SOLO SKU
+  // 🆕 SKU search deve usare mergedEntities
   if (shouldUseOnlySkuSearch(mergedEntities)) {
+    logger.debug('[ChatHandler] SKU-only request – dopo il merge')
+
     const skus = getSkuValues(mergedEntities)
     const products = await findProductsBySku(skus)
 
     if (products.length === 0) {
-      logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts')
+      logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts (SKU only)')
       const aiResponse = await fallbackNoProducts({ message, embedding, history, entities: mergedEntities })
       return {
         aiResponse,
@@ -1669,6 +1665,7 @@ export async function handleChatProductSearch(params: {
         responseSource: 'fallback-no-products'
       }
     }
+
     const merged = getMergedContext(history, entities, products)
 
     const aiResponse = await generateChatResponse({
@@ -1686,7 +1683,7 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  // ⛔️ Fallback se entità assenti o prive di termini
+  // ⛔️ NO ENTITIES
   if (
     mergedEntities.length === 0 ||
     !mergedEntities.some(e => e.type === 'terms')
@@ -1701,18 +1698,17 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  // 🔍 RICERCA PRODOTTI
-  // 🔤 Costruzione query testuale da entità terms
+  // 🔍 RICERCA IBRIDA
   const queryFromTerms = mergedEntities
-  .filter(e => e.type === 'terms')
-  .flatMap(e => e.value)
+    .filter(e => e.type === 'terms')
+    .flatMap(e => e.value)
 
   const queryFromAttributes = mergedEntities
-  .filter(e => e.type === 'attributes')
-  .flatMap(e => e.value)
+    .filter(e => e.type === 'attributes')
+    .flatMap(e => e.value)
 
   const searchQuery = [...queryFromTerms, ...queryFromAttributes].join(' ').trim() || 'prodotto'
-  const products = await searchHybridMongo(embedding, searchQuery, mergedEntities, 10, 1, 1)
+  const products = await searchHybridMongo(embedding, searchQuery, mergedEntities, 5, 1, 1)
 
   if (products.length === 0) {
     logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts')
@@ -1821,7 +1817,10 @@ import { saveMessageMongo } from '@/components/chat/chat-save'
 import { handleChatProductSearch } from '@/components/chat/chat-route-handler'
 import { buildEmbeddingText } from '@/components/chat/chat-build-embedding'
 import { getEmbedding } from '@/components/chat/chat-get-embedding'
+import { getSessionHistoryMongo } from '@/components/chat/chat-sessions'
+import { detectContextShift } from '@/components/chat/chat-detect-context'
 import { SaveChatMessageParams } from '@/components/chat/chat-save'
+import { fallbackContextShift } from '@/components/chat/chat-fallback'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
@@ -1838,10 +1837,49 @@ export async function POST(req: Request) {
     // 🔍 Estrai entità
     const entities = await extractEntitiesLLM(message)
 
-    // ✏️ Costruisci embedding e salva subito il messaggio utente
+    // 🔁 Carica history PRIMA di salvare il messaggio corrente
+    const history = await getSessionHistoryMongo(sessionId, 5)
+
+    // ✏️ Costruisci embedding
     const embeddingText = buildEmbeddingText(message, entities)
     const embedding = await getEmbedding(embeddingText)
 
+    // ✅ Logica context shift ora corretta
+    const contextShifted = detectContextShift(history, entities)
+    if (contextShifted) {
+      logger.warn('[ChatHandler] Context shift rilevato – attivo fallback')
+
+      const aiResponse = await fallbackContextShift({
+        message,
+        embedding,
+        history,
+        entities
+      })
+
+      // Salva risposta fallback come assistant
+      const aiMessageId = await saveMessageMongo({
+        session_id: sessionObjectId,
+        user_id: user.id,
+        role: 'assistant',
+        content: aiResponse.summary,
+        intent: aiResponse.intent ?? 'clarify',
+        products: [],
+        entities: aiResponse.entities ?? [],
+        createdAt: new Date().toISOString(),
+        source: 'fallback-context-shift'
+      })
+
+      return NextResponse.json({
+        summary: aiResponse.summary,
+        products: [],
+        intent: aiResponse.intent ?? 'clarify',
+        entities: aiResponse.entities ?? [],
+        _id: aiMessageId?.toString(),
+        source: 'fallback-context-shift'
+      })
+    }
+
+    // 💾 Salva messaggio utente
     const messageData: SaveChatMessageParams = {
       session_id: sessionObjectId,
       user_id: user.id,
@@ -1853,7 +1891,7 @@ export async function POST(req: Request) {
     }
     await saveMessageMongo(messageData)
 
-    // 🤖 Genera risposta AI (usa embedding, entità, sessione)
+    // 🤖 Genera risposta AI
     const {
       aiResponse,
       responseSource
@@ -1867,30 +1905,30 @@ export async function POST(req: Request) {
     })
     logger.debug('Risposta AI', { aiResponse })
 
-   // 💾 Salva risposta AI
-  const aiMessageId = await saveMessageMongo({
-    session_id: sessionObjectId,
-    user_id: user.id,
-    role: 'assistant',
-    content: aiResponse.summary,
-    intent: aiResponse.intent ?? 'suggestion',
-    products: aiResponse.products,
-    entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-    createdAt: new Date().toISOString()
-  })
+    // 💾 Salva risposta AI
+    const aiMessageId = await saveMessageMongo({
+      session_id: sessionObjectId,
+      user_id: user.id,
+      role: 'assistant',
+      content: aiResponse.summary,
+      intent: aiResponse.intent ?? 'suggestion',
+      products: aiResponse.products,
+      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
+      createdAt: new Date().toISOString()
+    })
 
-  logger.debug('Messaggio AI salvato', { aiMessageId })
+    logger.debug('Messaggio AI salvato', { aiMessageId })
 
-  // ✅ Risposta JSON al client
-  return NextResponse.json({
-    summary: aiResponse.summary,
-    products: aiResponse.products,
-    intent: aiResponse.intent ?? 'suggestion',
-    entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-    _id: aiMessageId?.toString(),
-    source: responseSource
-  })
-    
+    // ✅ Risposta JSON al client
+    return NextResponse.json({
+      summary: aiResponse.summary,
+      products: aiResponse.products,
+      intent: aiResponse.intent ?? 'suggestion',
+      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
+      _id: aiMessageId?.toString(),
+      source: responseSource
+    })
+
   } catch (err) {
     logger.error('[POST] Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })

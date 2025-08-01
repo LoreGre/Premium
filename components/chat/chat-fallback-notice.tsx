@@ -12,7 +12,7 @@ export function FallbackNotice({ source }: { source: FallbackSource }) {
       label: 'Richiesta poco chiara',
     },
     'fallback-no-products': {
-      icon: '📭',
+      icon: '📦',
       label: 'Nessun prodotto trovato',
     },
     'fallback-context-shift': {

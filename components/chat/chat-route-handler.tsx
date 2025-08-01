@@ -4,7 +4,6 @@ import { ObjectId } from 'mongodb'
 import { getSessionHistoryMongo } from './chat-sessions'
 import { generateChatResponse } from './chat-response'
 import { fallbackNoEntities, fallbackNoProducts, fallbackContextShift, fallbackNoIntent } from './chat-fallback'
-import { detectContextShift } from './chat-detect-context'
 import { shouldUseOnlySkuSearch, getSkuValues, findProductsBySku } from './chat-search-sku'
 import { searchHybridMongo } from './chat-search-mongo'
 import type { ChatMessage, ExtractedEntity, ProductItem, FallbackSource, ChatAIResponse } from './types'
@@ -60,36 +59,20 @@ export async function handleChatProductSearch(params: {
   responseSource: FallbackSource | 'standard-response'
 }> {
   const { message, sessionId, entities, embedding } = params
-
   const history = await getSessionHistoryMongo(sessionId, 5)
 
-  // 🔁 CAMBIO DI CONTESTO
-  if (detectContextShift(history, entities)) {
-    logger.warn('[ChatHandler] Context shift rilevato')
-    const aiResponse = await fallbackContextShift({
-      message,
-      embedding,
-      history,
-      entities
-    })
-    return {
-      aiResponse,
-      products: [],
-      mergedEntities: entities,
-      responseSource: 'fallback-context-shift'
-    }
-  }
-
-  // 🔀 Merge completo dopo il controllo context shift
+  // 🔀 Merge sempre subito
   const { mergedEntities } = getMergedContext(history, entities, [])
 
-  // 🔎 SOLO SKU
+  // 🆕 SKU search deve usare mergedEntities
   if (shouldUseOnlySkuSearch(mergedEntities)) {
+    logger.debug('[ChatHandler] SKU-only request – dopo il merge')
+
     const skus = getSkuValues(mergedEntities)
     const products = await findProductsBySku(skus)
 
     if (products.length === 0) {
-      logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts')
+      logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts (SKU only)')
       const aiResponse = await fallbackNoProducts({ message, embedding, history, entities: mergedEntities })
       return {
         aiResponse,
@@ -98,6 +81,7 @@ export async function handleChatProductSearch(params: {
         responseSource: 'fallback-no-products'
       }
     }
+
     const merged = getMergedContext(history, entities, products)
 
     const aiResponse = await generateChatResponse({
@@ -115,7 +99,7 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  // ⛔️ Fallback se entità assenti o prive di termini
+  // ⛔️ NO ENTITIES
   if (
     mergedEntities.length === 0 ||
     !mergedEntities.some(e => e.type === 'terms')
@@ -130,15 +114,14 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  // 🔍 RICERCA PRODOTTI
-  // 🔤 Costruzione query testuale da entità terms
+  // 🔍 RICERCA IBRIDA
   const queryFromTerms = mergedEntities
-  .filter(e => e.type === 'terms')
-  .flatMap(e => e.value)
+    .filter(e => e.type === 'terms')
+    .flatMap(e => e.value)
 
   const queryFromAttributes = mergedEntities
-  .filter(e => e.type === 'attributes')
-  .flatMap(e => e.value)
+    .filter(e => e.type === 'attributes')
+    .flatMap(e => e.value)
 
   const searchQuery = [...queryFromTerms, ...queryFromAttributes].join(' ').trim() || 'prodotto'
   const products = await searchHybridMongo(embedding, searchQuery, mergedEntities, 5, 1, 1)
