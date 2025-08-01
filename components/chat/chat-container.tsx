@@ -113,7 +113,6 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
         content: res.summary,
         products: res.products,
         intent: res.intent,
-        recommended: res.recommended,
         createdAt: new Date().toISOString(),
         _id: res._id,
         source: res.source 

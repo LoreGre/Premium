@@ -19,7 +19,7 @@ L'obiettivo è identificare con precisione i concetti chiave rilevanti per la ri
 🧠 ENTITÀ SUPPORTATE:
 - \`sku\`: codice prodotto (es. "MO8422", "5071", "AR1010")
 - \`quantity\`: quantità richiesta o minima (es. "10", "almeno 100", "10 pezzi", "una cinquantina")
-- \`color\`: colore rilevante (es. "rosso", "blu", "rosse", "rosa acceso", "bluette")
+- \`color\`: colore rilevante (in forma base maschile singolare, es. "rosso", "blu", "verde", "giallo"). Se l’utente scrive rosse, verdi, nera, bianche… restituisci sempre la forma standard.
 - \`size\`: taglia (es. "S", "M", "L", "XL", "extra large")
 - \`supplier\`: nome del fornitore o marchio (es. "MidOcean", "GiftLine")
 - \`terms\`: array di keyword utili per la ricerca testuale e semantica nei campi \`name\`, \`description\`, \`category_name\`

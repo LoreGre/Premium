@@ -33,11 +33,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
   const supabase = createClient()
 
   const products = message.products ?? []
-  const reasons: Record<string, string> =
-    message.recommended?.reduce((acc, rec) => {
-      acc[rec.sku] = rec.reason
-      return acc
-    }, {} as Record<string, string>) || {}
 
   const handleFeedback = async (rating: 'positive' | 'negative') => {
     setFeedback(rating)
@@ -98,6 +93,12 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                 title={`SKU: ${product.sku}`}
                 className="relative border rounded-xl p-4 flex items-start gap-4 bg-background shadow-sm"
               >
+                {product.isRecommended && (
+                  <div className="absolute top-2 right-2 text-[12px] font-medium text-yellow-800 bg-yellow-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span>⭐</span>
+                    <span>AI</span>
+                  </div>
+                )}
                 <div className="flex-1 pr-20">
                   <div className="flex gap-4">
                     <Image
@@ -108,7 +109,9 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       className="rounded-md object-cover"
                     />
                     <div className="flex-1">
-                      <p className="font-medium">{product.name}</p>
+                    <p className="font-medium flex items-center gap-1">
+                      {product.name}
+                    </p>
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
@@ -129,6 +132,12 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                             Taglia: {product.size}
                           </span>
                         )}
+
+                        {product.reason && (
+                          <p className="text-xs mt-1 text-blue-800 italic">
+                            <span className="font-semibold">Motivo:</span> {product.reason}
+                          </p>
+                        )}
                       </div>
                       <p className={cn(
                         'text-xs mt-1 font-medium',
@@ -136,11 +145,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       )}>
                         ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
-                      {reasons[product.sku] && (
-                        <p className="text-xs mt-1 text-blue-600 italic">
-                          <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -205,7 +209,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
       </div>
       {!isUser &&
         message.intent === 'clarify' &&
-        (!Array.isArray(message.recommended) || message.recommended.length === 0) &&
+        (!Array.isArray(message.products) || !message.products.some(p => p.isRecommended)) &&
         !!message.source && (
           <div className="flex justify-start max-w-[80%] pl-4 mt-[-0.25rem] mb-2">
             <FallbackNotice source={message.source} />

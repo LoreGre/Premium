@@ -2,40 +2,61 @@
 
 import { ObjectId } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
-import type { ChatMessage, ChatSession } from './types'
+import type { ChatMessage, ChatSession, FallbackSource } from './types'
 import { logger } from '@/lib/logger'
 
+export type SaveChatMessageParams = {
+  session_id: string | ObjectId
+  user_id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt?: string
+  embedding?: number[]
+  products?: ChatMessage['products']
+  intent?: string
+  feedback?: ChatMessage['feedback']
+  entities?: ChatMessage['entities']
+  source?: FallbackSource
+}
 
-
-export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
+export async function saveMessageMongo(params: SaveChatMessageParams): Promise<string> {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
 
-  const toInsert: ChatMessage = {
-    session_id: typeof msg.session_id === 'string' ? new ObjectId(msg.session_id) : msg.session_id!,
-    user_id: msg.user_id!,
-    role: msg.role!,
-    content: msg.content!,
-    createdAt: msg.createdAt || new Date().toISOString(),
-    products: msg.products,
-    recommended: msg.recommended,
-    intent: msg.intent,
-    embedding: msg.embedding,
-    feedback: msg.feedback,
-    entities: msg.entities,
-    source: msg.source
+  const sessionObjectId = typeof params.session_id === 'string'
+    ? new ObjectId(params.session_id)
+    : params.session_id
+
+  const baseMessage: ChatMessage = {
+    session_id: sessionObjectId,
+    user_id: params.user_id,
+    role: params.role,
+    content: params.content,
+    createdAt: params.createdAt ?? new Date().toISOString(),
+    products: params.products,
+    intent: params.intent,
+    embedding: params.embedding,
+    feedback: params.feedback,
+    entities: params.entities,
+    source: params.source
   }
+
+  // 🔍 Rimuove i campi undefined/null
+  const toInsert = Object.fromEntries(
+    Object.entries(baseMessage).filter(([, value]) => value !== undefined && value !== null)
+  ) as ChatMessage  
 
   const { insertedId } = await messages.insertOne(toInsert)
 
+  // ⏱️ aggiorna updatedAt nella sessione
   const sessions = await getMongoCollection<ChatSession>('chat_sessions')
   await sessions.updateOne(
-    { _id: toInsert.session_id },
+    { _id: sessionObjectId },
     { $set: { updatedAt: new Date().toISOString() } }
   )
 
   logger.info('Messaggio salvato su Mongo', {
-    role: msg.role,
-    session_id: toInsert.session_id.toString(),
+    role: toInsert.role,
+    session_id: sessionObjectId.toString(),
     messageId: insertedId.toString()
   })
 

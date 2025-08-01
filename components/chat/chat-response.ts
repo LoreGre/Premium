@@ -9,14 +9,18 @@ const openai = new OpenAI()
 export async function generateChatResponse({
   message,
   products,
-  contextMessages,
+  messages,
   entities
 }: {
   message: string
   products: ProductItem[]
-  contextMessages?: ChatMessage[]
+  messages?: ChatMessage[]
   entities?: ExtractedEntity[]
 }): Promise<ChatAIResponse> {
+
+  type LLMResponse = Omit<ChatAIResponse, 'products'> & {
+    recommended: { sku: string; reason: string }[]
+  }
 
   const entityBlock = Array.isArray(entities) && entities.length
     ? '🔸 ENTITIES:\n' + entities.map(e =>
@@ -26,14 +30,19 @@ export async function generateChatResponse({
       ).join('\n')
     : ''
 
-  const userTurns = contextMessages?.filter(m => m.role === 'user')
-    .map(m => `🧑‍💬 ${m.content}`) ?? []
+  const conversationTurns = messages?.map(m =>
+    m.role === 'user'
+      ? `🧑‍💬 ${m.content}`
+      : m.products?.length
+        ? m.products
+            .filter(p => p.isRecommended)
+            .map(p => `🤖 suggerito: ${p.sku} → ${p.reason ?? 'senza motivo'}`)
+            .join('\n')
+        : `🤖 ${m.content}`
+  ).filter(Boolean) ?? []
 
-  const recs = contextMessages?.filter(m => m.role === 'assistant' && m.recommended?.length)
-    .flatMap(m => m.recommended!.map(r => `🤖 suggerito: ${r.sku} → ${r.reason}`)) ?? []
-
-  const historyBlock = [...userTurns, ...recs].length
-    ? '🔸 CONVERSATION_HISTORY:\n' + [...userTurns, ...recs].join('\n')
+  const historyBlock = conversationTurns.length
+    ? '🔸 CONVERSATION_HISTORY:\n' + conversationTurns.join('\n')
     : ''
 
   const productBlock = products.length
@@ -60,11 +69,14 @@ ${productBlock}
 🔸 CONSTRAINTS:
 - Usa un tono cordiale e diretto rivolto all'utente (dare del TU)
 - La summary deve parlare direttamente all'utente, **non usare mai "L'utente ha chiesto..."**
-- Suggerisci massimo 4 prodotti (solo se presenti e disponibili)
+- Suggerisci massimo 3 prodotti (solo se presenti e disponibili)
 - Se non ci sono prodotti disponibili, informa l’utente e suggerisci alternative pertinenti
 - Se è un confronto tra prodotti, segnala chiaramente quali SKU sono trovati e quali no
 - Motiva ogni prodotto suggerito (campo "reason")
 - Classifica l'intento tra: info, purchase, compare, clarify, other
+- Se il messaggio non richiede un'azione specifica (es: mostrare prodotti, confrontare, comprare) → usa "other"
+- Se la frase è generica, confusa, o riguarda strategie, fornitori, test, processi… → usa sempre "other"
+- Se hai dubbi sull’intento, NON usare "info" per default. Usa "clarify" o "other".
 
 🔸 FORMAT_OUTPUT:
 {
@@ -99,7 +111,7 @@ Rispondi solo con JSON valido. Nessun testo extra.
   if (!rawContent) throw new Error('Risposta AI vuota')
 
   try {
-    const parsed = JSON.parse(rawContent)
+    const parsed = JSON.parse(rawContent) as LLMResponse
 
     if (!products.length && parsed.recommended?.length) {
       logger.warn('⚠️ AI ha restituito raccomandazioni senza prodotti', {
@@ -107,13 +119,33 @@ Rispondi solo con JSON valido. Nessun testo extra.
       })
     }
 
+    const enrichedProducts = products.map(p => {
+      const match = parsed.recommended.find(r => r.sku === p.sku)
+      return match
+        ? { ...p, isRecommended: true, reason: match.reason }
+        : p
+    })
+    
+    // 🔝 Metti i raccomandati in testa
+    const sortedProducts = [
+      ...enrichedProducts.filter(p => p.isRecommended),
+      ...enrichedProducts.filter(p => !p.isRecommended)
+    ]    
+
+
     logger.info('Risposta AI generata', {
       summary: parsed.summary,
       intent: parsed.intent,
       nRecommended: parsed.recommended.length
     })
 
-    return parsed
+    return {
+      summary: parsed.summary,
+      products: sortedProducts,
+      intent: parsed.intent,
+      entities: parsed.entities
+    }
+
   } catch (err) {
     logger.error('Parsing JSON risposta AI fallito', { rawContent, error: err })
     throw new Error('Risposta AI non in JSON')

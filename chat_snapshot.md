@@ -1,4 +1,4 @@
-# Chat Snapshot - Ven  1 Ago 2025 11:55:55 CEST
+# Chat Snapshot - Ven  1 Ago 2025 17:09:04 CEST
 
 ## Directory tree (./components/chat/)
 
@@ -145,7 +145,6 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
         content: res.summary,
         products: res.products,
         intent: res.intent,
-        recommended: res.recommended,
         createdAt: new Date().toISOString(),
         _id: res._id,
         source: res.source 
@@ -206,20 +205,29 @@ export function ChatContainer({ sessionId: initialSessionId }: ChatContainerProp
 ---
 ### ./components/chat/chat-search-mongo.ts
 
-'use server'
-
 import { getMongoCollection } from '@/lib/mongo/client'
 import type { ProductItem, ExtractedEntity } from './types'
 import { logger } from '@/lib/logger'
 
-/* 🔹 VECTOR SEARCH (già esistente) */
-export async function vectorMongoSearch(
+export async function searchHybridMongo(
   embedding: number[],
-  limit = 10
+  query: string,
+  entities: ExtractedEntity[] = [],
+  limit = 6,
+  vectorPriority = 0,
+  textPriority = 0
 ): Promise<ProductItem[]> {
   const prodotti = await getMongoCollection<ProductItem>('prodotti')
 
-  const pipeline = [
+  const colors = entities
+    .filter(e => e.type === 'color')
+    .map(e => String(e.value).toLowerCase())
+
+  const sizes = entities
+    .filter(e => e.type === 'size')
+    .map(e => String(e.value).toUpperCase())
+
+  const vectorPipeline = [
     {
       $vectorSearch: {
         index: 'prodotti_vector_index',
@@ -229,38 +237,34 @@ export async function vectorMongoSearch(
         limit
       }
     },
-    { $sort: { score: -1 } },
-    { $limit: limit },
+    { $group: { _id: null, docs: { $push: '$$ROOT' } } },
+    { $unwind: { path: '$docs', includeArrayIndex: 'rank' } },
+    {
+      $addFields: {
+        vs_score: {
+          $divide: [1.0, { $add: ['$rank', vectorPriority, 1] }]
+        }
+      }
+    },
     {
       $project: {
-        sku: 1,
-        name: 1,
-        description: 1,
-        thumbnail: 1,
-        color: 1,
-        size: 1,
-        supplier: 1,
-        category_name: 1,
-        unit_price: 1,
-        qty: 1,
-        score: 1
+        vs_score: 1,
+        _id: '$docs._id',
+        sku: '$docs.sku',
+        name: '$docs.name',
+        description: '$docs.description',
+        thumbnail: '$docs.thumbnail',
+        color: '$docs.color',
+        size: '$docs.size',
+        supplier: '$docs.supplier',
+        category_name: '$docs.category_name',
+        unit_price: '$docs.unit_price',
+        qty: '$docs.qty'
       }
     }
   ]
 
-  const results = await prodotti.aggregate<ProductItem>(pipeline).toArray()
-  logger.info('[vectorMongoSearch] Risultati vector search', { count: results.length })
-  return results
-}
-
-/* 🔹 TEXT SEARCH (Atlas $search) */
-export async function textMongoSearch(
-  query: string,
-  limit = 10
-): Promise<ProductItem[]> {
-  const prodotti = await getMongoCollection<ProductItem>('prodotti')
-
-  const pipeline = [
+  const textPipeline = [
     {
       $search: {
         index: 'prodotti_text_index',
@@ -271,99 +275,31 @@ export async function textMongoSearch(
       }
     },
     { $limit: limit },
+    { $group: { _id: null, docs: { $push: '$$ROOT' } } },
+    { $unwind: { path: '$docs', includeArrayIndex: 'rank' } },
+    {
+      $addFields: {
+        ts_score: {
+          $divide: [1.0, { $add: ['$rank', textPriority, 1] }]
+        }
+      }
+    },
     {
       $project: {
-        sku: 1,
-        name: 1,
-        description: 1,
-        thumbnail: 1,
-        color: 1,
-        size: 1,
-        supplier: 1,
-        category_name: 1,
-        unit_price: 1,
-        qty: 1,
-        score: { $meta: 'searchScore' }
+        ts_score: 1,
+        _id: '$docs._id',
+        sku: '$docs.sku',
+        name: '$docs.name',
+        description: '$docs.description',
+        thumbnail: '$docs.thumbnail',
+        color: '$docs.color',
+        size: '$docs.size',
+        supplier: '$docs.supplier',
+        category_name: '$docs.category_name',
+        unit_price: '$docs.unit_price',
+        qty: '$docs.qty'
       }
     }
-  ]
-
-  const results = await prodotti.aggregate<ProductItem>(pipeline).toArray()
-  logger.info('[textMongoSearch] Risultati text search', { count: results.length })
-  return results
-}
-
-/* 🔀 HYBRID SEARCH (vector + text fusion) */
-export async function searchHybridMongo(
-  embedding: number[],
-  query: string,
-  limit = 10,
-  vectorPriority = 0,
-  textPriority = 0
-): Promise<ProductItem[]> {
-  const prodotti = await getMongoCollection<ProductItem>('prodotti')
-
-  const vectorPipeline = [
-    { $vectorSearch: {
-        index: 'prodotti_vector_index',
-        path: 'embedding',
-        queryVector: embedding,
-        numCandidates: 100,
-        limit
-    }},
-    { $group: { _id: null, docs: { $push: "$$ROOT" } } },
-    { $unwind: { path: "$docs", includeArrayIndex: "rank" } },
-    { $addFields: {
-        vs_score: {
-          $divide: [1.0, { $add: ["$rank", vectorPriority, 1] }]
-        }
-    }},
-    { $project: {
-        vs_score: 1,
-        _id: "$docs._id",
-        sku: "$docs.sku",
-        name: "$docs.name",
-        description: "$docs.description",
-        thumbnail: "$docs.thumbnail",
-        color: "$docs.color",
-        size: "$docs.size",
-        supplier: "$docs.supplier",
-        category_name: "$docs.category_name",
-        unit_price: "$docs.unit_price",
-        qty: "$docs.qty"
-    }}
-  ]
-
-  const textPipeline = [
-    { $search: {
-        index: 'prodotti_text_index',
-        text: {
-          query,
-          path: ['name', 'description', 'category_name', 'supplier', 'color']
-        }
-    }},
-    { $limit: limit },
-    { $group: { _id: null, docs: { $push: "$$ROOT" } } },
-    { $unwind: { path: "$docs", includeArrayIndex: "rank" } },
-    { $addFields: {
-        ts_score: {
-          $divide: [1.0, { $add: ["$rank", textPriority, 1] }]
-        }
-    }},
-    { $project: {
-        ts_score: 1,
-        _id: "$docs._id",
-        sku: "$docs.sku",
-        name: "$docs.name",
-        description: "$docs.description",
-        thumbnail: "$docs.thumbnail",
-        color: "$docs.color",
-        size: "$docs.size",
-        supplier: "$docs.supplier",
-        category_name: "$docs.category_name",
-        unit_price: "$docs.unit_price",
-        qty: "$docs.qty"
-    }}
   ]
 
   const pipeline = [
@@ -376,19 +312,37 @@ export async function searchHybridMongo(
     },
     {
       $group: {
-        _id: "$_id",
-        sku: { $first: "$sku" },
-        name: { $first: "$name" },
-        description: { $first: "$description" },
-        thumbnail: { $first: "$thumbnail" },
-        color: { $first: "$color" },
-        size: { $first: "$size" },
-        supplier: { $first: "$supplier" },
-        category_name: { $first: "$category_name" },
-        unit_price: { $first: "$unit_price" },
-        qty: { $first: "$qty" },
-        vs_score: { $max: "$vs_score" },
-        ts_score: { $max: "$ts_score" }
+        _id: '$_id',
+        sku: { $first: '$sku' },
+        name: { $first: '$name' },
+        description: { $first: '$description' },
+        thumbnail: { $first: '$thumbnail' },
+        color: { $first: '$color' },
+        size: { $first: '$size' },
+        supplier: { $first: '$supplier' },
+        category_name: { $first: '$category_name' },
+        unit_price: { $first: '$unit_price' },
+        qty: { $first: '$qty' },
+        vs_score: { $max: '$vs_score' },
+        ts_score: { $max: '$ts_score' }
+      }
+    },
+    {
+      $addFields: {
+        colorBoost: {
+          $cond: [
+            { $in: [{ $toLower: '$color' }, colors] },
+            0.2,
+            0
+          ]
+        },
+        sizeBoost: {
+          $cond: [
+            { $in: [{ $toUpper: '$size' }, sizes] },
+            0.2,
+            0
+          ]
+        }
       }
     },
     {
@@ -405,8 +359,10 @@ export async function searchHybridMongo(
         qty: 1,
         score: {
           $add: [
-            { $ifNull: ["$vs_score", 0] },
-            { $ifNull: ["$ts_score", 0] }
+            { $ifNull: ['$vs_score', 0] },
+            { $ifNull: ['$ts_score', 0] },
+            { $ifNull: ['$colorBoost', 0] },
+            { $ifNull: ['$sizeBoost', 0] }
           ]
         }
       }
@@ -419,22 +375,6 @@ export async function searchHybridMongo(
   logger.info('[searchHybridMongo] Risultati hybrid search', { count: results.length })
   return results
 }
-
-/* 🧹 FILTRO post-search basato su entità */
-export function filterProductsByEntities(
-  products: ProductItem[],
-  entities: ExtractedEntity[]
-): ProductItem[] {
-  const colors = entities.filter(e => e.type === 'color').map(e => e.value.toLowerCase())
-  const sizes = entities.filter(e => e.type === 'size').map(e => e.value.toUpperCase())
-
-  return products.filter(p => {
-    const colorOk = colors.length === 0 || (p.color && colors.includes(p.color.toLowerCase()))
-    const sizeOk = sizes.length === 0 || (p.size && sizes.includes(p.size.toUpperCase()))
-    return colorOk && sizeOk
-  })
-}
-
 ---
 ### ./components/chat/chat-detect-context.ts
 
@@ -483,7 +423,7 @@ L'obiettivo è identificare con precisione i concetti chiave rilevanti per la ri
 🧠 ENTITÀ SUPPORTATE:
 - \`sku\`: codice prodotto (es. "MO8422", "5071", "AR1010")
 - \`quantity\`: quantità richiesta o minima (es. "10", "almeno 100", "10 pezzi", "una cinquantina")
-- \`color\`: colore rilevante (es. "rosso", "blu", "rosse", "rosa acceso", "bluette")
+- \`color\`: colore rilevante (in forma base maschile singolare, es. "rosso", "blu", "verde", "giallo"). Se l’utente scrive rosse, verdi, nera, bianche… restituisci sempre la forma standard.
 - \`size\`: taglia (es. "S", "M", "L", "XL", "extra large")
 - \`supplier\`: nome del fornitore o marchio (es. "MidOcean", "GiftLine")
 - \`terms\`: array di keyword utili per la ricerca testuale e semantica nei campi \`name\`, \`description\`, \`category_name\`
@@ -844,11 +784,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
   const supabase = createClient()
 
   const products = message.products ?? []
-  const reasons: Record<string, string> =
-    message.recommended?.reduce((acc, rec) => {
-      acc[rec.sku] = rec.reason
-      return acc
-    }, {} as Record<string, string>) || {}
 
   const handleFeedback = async (rating: 'positive' | 'negative') => {
     setFeedback(rating)
@@ -909,6 +844,12 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                 title={`SKU: ${product.sku}`}
                 className="relative border rounded-xl p-4 flex items-start gap-4 bg-background shadow-sm"
               >
+                {product.isRecommended && (
+                  <div className="absolute top-2 right-2 text-[12px] font-medium text-yellow-800 bg-yellow-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span>⭐</span>
+                    <span>AI</span>
+                  </div>
+                )}
                 <div className="flex-1 pr-20">
                   <div className="flex gap-4">
                     <Image
@@ -919,7 +860,9 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       className="rounded-md object-cover"
                     />
                     <div className="flex-1">
-                      <p className="font-medium">{product.name}</p>
+                    <p className="font-medium flex items-center gap-1">
+                      {product.name}
+                    </p>
                       <p className="text-sm text-muted-foreground">
                         {(product.unit_price ?? 0).toFixed(2)} € · {product.supplier}
                       </p>
@@ -940,6 +883,12 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                             Taglia: {product.size}
                           </span>
                         )}
+
+                        {product.reason && (
+                          <p className="text-xs mt-1 text-blue-800 italic">
+                            <span className="font-semibold">Motivo:</span> {product.reason}
+                          </p>
+                        )}
                       </div>
                       <p className={cn(
                         'text-xs mt-1 font-medium',
@@ -947,11 +896,6 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
                       )}>
                         ({product.qty ?? 0}) {(product.qty ?? 0) > 0 ? 'Disponibile' : 'Non disponibile'}
                       </p>
-                      {reasons[product.sku] && (
-                        <p className="text-xs mt-1 text-blue-600 italic">
-                          <span className="font-semibold">Motivo:</span> {reasons[product.sku]}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1016,7 +960,7 @@ export function ChatMessageItem({ message }: { message: UIMessage }) {
       </div>
       {!isUser &&
         message.intent === 'clarify' &&
-        (!Array.isArray(message.recommended) || message.recommended.length === 0) &&
+        (!Array.isArray(message.products) || !message.products.some(p => p.isRecommended)) &&
         !!message.source && (
           <div className="flex justify-start max-w-[80%] pl-4 mt-[-0.25rem] mb-2">
             <FallbackNotice source={message.source} />
@@ -1114,7 +1058,6 @@ export async function sendChatMessage(
 
   return {
     summary: data.summary,
-    recommended: Array.isArray(data.recommended) ? data.recommended : [],
     products: Array.isArray(data.products) ? data.products : [],
     intent: data.intent,
     _id: data._id,
@@ -1125,7 +1068,7 @@ export async function sendChatMessage(
 ---
 ### ./components/chat/chat-search-sku.tsx
 
-'use server'
+
 
 import { getMongoCollection } from '@/lib/mongo/client'
 import type { ExtractedEntity, ProductItem } from './types'
@@ -1172,45 +1115,67 @@ export async function findProductsBySku(skus: string[]): Promise<ProductItem[]> 
 
 import { ObjectId } from 'mongodb'
 import { getMongoCollection } from '@/lib/mongo/client'
-import type { ChatMessage, ChatSession } from './types'
+import type { ChatMessage, ChatSession, FallbackSource } from './types'
 import { logger } from '@/lib/logger'
 
+export type SaveChatMessageParams = {
+  session_id: string | ObjectId
+  user_id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt?: string
+  embedding?: number[]
+  products?: ChatMessage['products']
+  intent?: string
+  feedback?: ChatMessage['feedback']
+  entities?: ChatMessage['entities']
+  source?: FallbackSource
+}
 
-
-export async function saveMessageMongo(msg: Partial<ChatMessage>): Promise<string> {
+export async function saveMessageMongo(params: SaveChatMessageParams): Promise<string> {
   const messages = await getMongoCollection<ChatMessage>('chat_messages')
 
-  const toInsert: ChatMessage = {
-    session_id: typeof msg.session_id === 'string' ? new ObjectId(msg.session_id) : msg.session_id!,
-    user_id: msg.user_id!,
-    role: msg.role!,
-    content: msg.content!,
-    createdAt: msg.createdAt || new Date().toISOString(),
-    products: msg.products,
-    recommended: msg.recommended,
-    intent: msg.intent,
-    embedding: msg.embedding,
-    feedback: msg.feedback,
-    entities: msg.entities,
-    source: msg.source
+  const sessionObjectId = typeof params.session_id === 'string'
+    ? new ObjectId(params.session_id)
+    : params.session_id
+
+  const baseMessage: ChatMessage = {
+    session_id: sessionObjectId,
+    user_id: params.user_id,
+    role: params.role,
+    content: params.content,
+    createdAt: params.createdAt ?? new Date().toISOString(),
+    products: params.products,
+    intent: params.intent,
+    embedding: params.embedding,
+    feedback: params.feedback,
+    entities: params.entities,
+    source: params.source
   }
+
+  // 🔍 Rimuove i campi undefined/null
+  const toInsert = Object.fromEntries(
+    Object.entries(baseMessage).filter(([, value]) => value !== undefined && value !== null)
+  ) as ChatMessage  
 
   const { insertedId } = await messages.insertOne(toInsert)
 
+  // ⏱️ aggiorna updatedAt nella sessione
   const sessions = await getMongoCollection<ChatSession>('chat_sessions')
   await sessions.updateOne(
-    { _id: toInsert.session_id },
+    { _id: sessionObjectId },
     { $set: { updatedAt: new Date().toISOString() } }
   )
 
   logger.info('Messaggio salvato su Mongo', {
-    role: msg.role,
-    session_id: toInsert.session_id.toString(),
+    role: toInsert.role,
+    session_id: sessionObjectId.toString(),
     messageId: insertedId.toString()
   })
 
   return insertedId.toString()
 }
+
 ---
 ### ./components/chat/chat-feedback.ts
 
@@ -1253,6 +1218,8 @@ export type ProductItem = {
   color?: string
   size?: string
   score?: number
+  isRecommended?: boolean
+  reason?: string
 }
 
 // ------------------ ENTITÀ ------------------
@@ -1270,13 +1237,11 @@ export type ExtractedEntity =
 // ------------------ RISPOSTA AI ------------------
 export type ChatAIResponse = {
   summary: string
-  recommended: {
-    sku: string
-    reason: string
-  }[]
+  products: ProductItem[] // ✅ AGGIUNGI QUESTO
   intent?: 'info' | 'purchase' | 'compare' | 'clarify' | 'other'
   entities?: ExtractedEntity[]
 }
+
 
 // ------------------ FEEDBACK UTENTE ------------------
 export type Feedback = {
@@ -1293,7 +1258,6 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   products?: ProductItem[]
-  recommended?: { sku: string; reason: string }[]
   intent?: string
   embedding?: number[]
   feedback?: Feedback
@@ -1322,7 +1286,6 @@ export type ChatSession = {
 // ------------------ RISPOSTA API CHAT (FRONTEND) ------------------
 export type ChatApiResponse = {
   summary: string
-  recommended: { sku: string; reason: string }[]
   products: ProductItem[]
   intent?: string
   _id?: string
@@ -1400,14 +1363,18 @@ const openai = new OpenAI()
 export async function generateChatResponse({
   message,
   products,
-  contextMessages,
+  messages,
   entities
 }: {
   message: string
   products: ProductItem[]
-  contextMessages?: ChatMessage[]
+  messages?: ChatMessage[]
   entities?: ExtractedEntity[]
 }): Promise<ChatAIResponse> {
+
+  type LLMResponse = Omit<ChatAIResponse, 'products'> & {
+    recommended: { sku: string; reason: string }[]
+  }
 
   const entityBlock = Array.isArray(entities) && entities.length
     ? '🔸 ENTITIES:\n' + entities.map(e =>
@@ -1417,14 +1384,19 @@ export async function generateChatResponse({
       ).join('\n')
     : ''
 
-  const userTurns = contextMessages?.filter(m => m.role === 'user')
-    .map(m => `🧑‍💬 ${m.content}`) ?? []
+  const conversationTurns = messages?.map(m =>
+    m.role === 'user'
+      ? `🧑‍💬 ${m.content}`
+      : m.products?.length
+        ? m.products
+            .filter(p => p.isRecommended)
+            .map(p => `🤖 suggerito: ${p.sku} → ${p.reason ?? 'senza motivo'}`)
+            .join('\n')
+        : `🤖 ${m.content}`
+  ).filter(Boolean) ?? []
 
-  const recs = contextMessages?.filter(m => m.role === 'assistant' && m.recommended?.length)
-    .flatMap(m => m.recommended!.map(r => `🤖 suggerito: ${r.sku} → ${r.reason}`)) ?? []
-
-  const historyBlock = [...userTurns, ...recs].length
-    ? '🔸 CONVERSATION_HISTORY:\n' + [...userTurns, ...recs].join('\n')
+  const historyBlock = conversationTurns.length
+    ? '🔸 CONVERSATION_HISTORY:\n' + conversationTurns.join('\n')
     : ''
 
   const productBlock = products.length
@@ -1451,11 +1423,14 @@ ${productBlock}
 🔸 CONSTRAINTS:
 - Usa un tono cordiale e diretto rivolto all'utente (dare del TU)
 - La summary deve parlare direttamente all'utente, **non usare mai "L'utente ha chiesto..."**
-- Suggerisci massimo 4 prodotti (solo se presenti e disponibili)
+- Suggerisci massimo 3 prodotti (solo se presenti e disponibili)
 - Se non ci sono prodotti disponibili, informa l’utente e suggerisci alternative pertinenti
 - Se è un confronto tra prodotti, segnala chiaramente quali SKU sono trovati e quali no
 - Motiva ogni prodotto suggerito (campo "reason")
 - Classifica l'intento tra: info, purchase, compare, clarify, other
+- Se il messaggio non richiede un'azione specifica (es: mostrare prodotti, confrontare, comprare) → usa "other"
+- Se la frase è generica, confusa, o riguarda strategie, fornitori, test, processi… → usa sempre "other"
+- Se hai dubbi sull’intento, NON usare "info" per default. Usa "clarify" o "other".
 
 🔸 FORMAT_OUTPUT:
 {
@@ -1490,7 +1465,7 @@ Rispondi solo con JSON valido. Nessun testo extra.
   if (!rawContent) throw new Error('Risposta AI vuota')
 
   try {
-    const parsed = JSON.parse(rawContent)
+    const parsed = JSON.parse(rawContent) as LLMResponse
 
     if (!products.length && parsed.recommended?.length) {
       logger.warn('⚠️ AI ha restituito raccomandazioni senza prodotti', {
@@ -1498,13 +1473,33 @@ Rispondi solo con JSON valido. Nessun testo extra.
       })
     }
 
+    const enrichedProducts = products.map(p => {
+      const match = parsed.recommended.find(r => r.sku === p.sku)
+      return match
+        ? { ...p, isRecommended: true, reason: match.reason }
+        : p
+    })
+    
+    // 🔝 Metti i raccomandati in testa
+    const sortedProducts = [
+      ...enrichedProducts.filter(p => p.isRecommended),
+      ...enrichedProducts.filter(p => !p.isRecommended)
+    ]    
+
+
     logger.info('Risposta AI generata', {
       summary: parsed.summary,
       intent: parsed.intent,
       nRecommended: parsed.recommended.length
     })
 
-    return parsed
+    return {
+      summary: parsed.summary,
+      products: sortedProducts,
+      intent: parsed.intent,
+      entities: parsed.entities
+    }
+
   } catch (err) {
     logger.error('Parsing JSON risposta AI fallito', { rawContent, error: err })
     throw new Error('Risposta AI non in JSON')
@@ -1576,83 +1571,127 @@ export async function getSessionHistoryMongo(sessionId: string, limit = 10) {
 
 'use server'
 
-import { buildEmbeddingText } from './chat-build-embedding'
-import { getEmbedding } from './chat-get-embedding'
+import { ObjectId } from 'mongodb'
 import { getSessionHistoryMongo } from './chat-sessions'
 import { generateChatResponse } from './chat-response'
 import { fallbackNoEntities, fallbackNoProducts, fallbackContextShift, fallbackNoIntent } from './chat-fallback'
 import { detectContextShift } from './chat-detect-context'
 import { shouldUseOnlySkuSearch, getSkuValues, findProductsBySku } from './chat-search-sku'
-import { searchHybridMongo, filterProductsByEntities } from './chat-search-mongo'
-import type {
-  ChatAIResponse,
-  ExtractedEntity,
-  ProductItem,
-  ChatMessage,
-  FallbackSource
-} from './types'
+import { searchHybridMongo } from './chat-search-mongo'
+import type { ChatMessage, ExtractedEntity, ProductItem, FallbackSource, ChatAIResponse } from './types'
 import { logger } from '@/lib/logger'
+
+
+function getMergedContext(
+  history: ChatMessage[],
+  currentEntities: ExtractedEntity[],
+  currentProducts: ProductItem[]
+): {
+  mergedEntities: ExtractedEntity[]
+  mergedProducts: ProductItem[]
+  mergedMessages: ChatMessage[]
+} {
+  // 1. Entità unificate (senza duplicati logici)
+  const mergedEntities = [...new Map(
+    [...(history.flatMap(m => m.entities || [])), ...currentEntities]
+      .map(e => [`${e.type}:${String(e.value).toLowerCase()}`, e])
+  ).values()]
+
+  // 2. Prodotti raccomandati nei messaggi precedenti (solo assistant)
+  const pastRecommended = history
+    .filter(m => m.role === 'assistant')
+    .flatMap(m => m.products?.filter(p => p.isRecommended) || [])
+
+  // 3. Deduplica: prodotti nuovi + suggeriti in precedenza
+  const mergedProducts = [...new Map(
+    [...pastRecommended, ...currentProducts].map(p => [p.sku, p])
+  ).values()]
+
+  // 4. Messaggi ordinati dal più vecchio al più recente
+  const mergedMessages = [...history]
+
+  return {
+    mergedEntities,
+    mergedProducts,
+    mergedMessages
+  }
+}
 
 export async function handleChatProductSearch(params: {
   message: string
   sessionId: string
-  sessionObjectId: any // ObjectId
+  sessionObjectId: ObjectId
   userId: string
   entities: ExtractedEntity[]
+  embedding: number[]
 }): Promise<{
   aiResponse: ChatAIResponse
   products: ProductItem[]
   mergedEntities: ExtractedEntity[]
   responseSource: FallbackSource | 'standard-response'
 }> {
-  const { message, sessionId, sessionObjectId, userId, entities } = params
+  const { message, sessionId, entities, embedding } = params
 
-  // Step 1 – Recupera cronologia conversazione
   const history = await getSessionHistoryMongo(sessionId, 10)
 
-  // Step 2 – Ramo solo SKU
-  if (shouldUseOnlySkuSearch(entities)) {
-    const skus = getSkuValues(entities)
+  // 🔁 CAMBIO DI CONTESTO
+  if (detectContextShift(history, entities)) {
+    logger.warn('[ChatHandler] Context shift rilevato')
+    const aiResponse = await fallbackContextShift({
+      message,
+      embedding,
+      history,
+      entities
+    })
+    return {
+      aiResponse,
+      products: [],
+      mergedEntities: entities,
+      responseSource: 'fallback-context-shift'
+    }
+  }
+
+  // 🔀 Merge completo dopo il controllo context shift
+  const { mergedEntities } = getMergedContext(history, entities, [])
+
+  // 🔎 SOLO SKU
+  if (shouldUseOnlySkuSearch(mergedEntities)) {
+    const skus = getSkuValues(mergedEntities)
     const products = await findProductsBySku(skus)
+
+    if (products.length === 0) {
+      logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts')
+      const aiResponse = await fallbackNoProducts({ message, embedding, history, entities: mergedEntities })
+      return {
+        aiResponse,
+        products: [],
+        mergedEntities,
+        responseSource: 'fallback-no-products'
+      }
+    }
+    const merged = getMergedContext(history, entities, products)
 
     const aiResponse = await generateChatResponse({
       message,
-      products,
-      contextMessages: history,
-      entities
+      entities: merged.mergedEntities,
+      products: merged.mergedProducts,
+      messages: merged.mergedMessages
     })
 
     return {
       aiResponse,
       products,
-      mergedEntities: entities,
+      mergedEntities: merged.mergedEntities,
       responseSource: 'standard-response'
     }
   }
 
-  // Step 3 – Embedding + Hybrid search
-  const embeddingText = buildEmbeddingText(message, entities)
-  const embedding = await getEmbedding(embeddingText)
-
-  const contextShift = detectContextShift(history, entities)
-  const mergedEntities = [...new Map(
-    [...history.flatMap(m => m.entities || []), ...entities]
-      .map(e => [`${e.type}:${String(e.value).toLowerCase()}`, e])
-  ).values()]
-
-  if (contextShift) {
-    logger.warn('[ChatHandler] Context shift rilevato')
-    const aiResponse = await fallbackContextShift({ message, embedding, history, entities: mergedEntities })
-    return {
-      aiResponse,
-      products: [],
-      mergedEntities,
-      responseSource: 'fallback-context-shift'
-    }
-  }
-
-  if (mergedEntities.length === 0) {
-    logger.warn('[ChatHandler] Nessuna entità – fallback noEntities')
+  // ⛔️ Fallback se entità assenti o prive di termini
+  if (
+    mergedEntities.length === 0 ||
+    !mergedEntities.some(e => e.type === 'terms')
+  ) {
+    logger.warn('[ChatHandler] Nessuna entità o nessun terms – fallback noEntities')
     const aiResponse = await fallbackNoEntities({ message, embedding, history })
     return {
       aiResponse,
@@ -1662,13 +1701,18 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  const queryText = mergedEntities
-    .filter(e => ['terms', 'attributes', 'color', 'supplier'].includes(e.type))
-    .flatMap(e => Array.isArray(e.value) ? e.value : [e.value])
-    .join(' ')
+  // 🔍 RICERCA PRODOTTI
+  // 🔤 Costruzione query testuale da entità terms
+  const queryFromTerms = mergedEntities
+  .filter(e => e.type === 'terms')
+  .flatMap(e => e.value)
 
-  const rawProducts = await searchHybridMongo(embedding, queryText, 10, 1, 1)
-  const products = filterProductsByEntities(rawProducts, mergedEntities)
+  const queryFromAttributes = mergedEntities
+  .filter(e => e.type === 'attributes')
+  .flatMap(e => e.value)
+
+  const searchQuery = [...queryFromTerms, ...queryFromAttributes].join(' ').trim() || 'prodotto'
+  const products = await searchHybridMongo(embedding, searchQuery, mergedEntities, 10, 1, 1)
 
   if (products.length === 0) {
     logger.warn('[ChatHandler] Nessun prodotto trovato – fallback noProducts')
@@ -1681,12 +1725,13 @@ export async function handleChatProductSearch(params: {
     }
   }
 
-  // Step 4 – Risposta AI
+  const merged = getMergedContext(history, entities, products)
+
   let aiResponse = await generateChatResponse({
     message,
-    products,
-    contextMessages: history,
-    entities: mergedEntities
+    entities: merged.mergedEntities,
+    products: merged.mergedProducts,
+    messages: merged.mergedMessages
   })
 
   let responseSource: FallbackSource | 'standard-response' = 'standard-response'
@@ -1697,7 +1742,7 @@ export async function handleChatProductSearch(params: {
       message,
       embedding,
       history,
-      entities: mergedEntities
+      entities: merged.mergedEntities
     })
     responseSource = 'fallback-no-intent'
   }
@@ -1705,7 +1750,7 @@ export async function handleChatProductSearch(params: {
   return {
     aiResponse,
     products,
-    mergedEntities,
+    mergedEntities: merged.mergedEntities,
     responseSource
   }
 }
@@ -1772,10 +1817,11 @@ import { ObjectId } from 'mongodb'
 import { NextResponse } from 'next/server'
 import { requireAuthUser } from '@/lib/auth/requireAuthUser'
 import { extractEntitiesLLM } from '@/components/chat/chat-exctract-entities'
-import { buildEmbeddingText } from '@/components/chat/chat-build-embedding'
-import { getEmbedding } from '@/components/chat/chat-get-embedding'
 import { saveMessageMongo } from '@/components/chat/chat-save'
 import { handleChatProductSearch } from '@/components/chat/chat-route-handler'
+import { buildEmbeddingText } from '@/components/chat/chat-build-embedding'
+import { getEmbedding } from '@/components/chat/chat-get-embedding'
+import { SaveChatMessageParams } from '@/components/chat/chat-save'
 import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
@@ -1789,48 +1835,62 @@ export async function POST(req: Request) {
     if (!ObjectId.isValid(sessionId)) throw new Error('ID di sessione non valido')
     const sessionObjectId = new ObjectId(sessionId)
 
+    // 🔍 Estrai entità
     const entities = await extractEntitiesLLM(message)
-    const {
-      aiResponse,
-      products,
-      mergedEntities,
-      responseSource
-    } = await handleChatProductSearch({ message, sessionId, sessionObjectId, userId: user.id, entities })
 
+    // ✏️ Costruisci embedding e salva subito il messaggio utente
     const embeddingText = buildEmbeddingText(message, entities)
     const embedding = await getEmbedding(embeddingText)
 
-    const userMessageId = await saveMessageMongo({
+    const messageData: SaveChatMessageParams = {
       session_id: sessionObjectId,
       user_id: user.id,
       role: 'user',
       content: message,
       embedding,
-      entities: mergedEntities,
-      createdAt: new Date().toISOString()
-    })
+      entities,
+      createdAt: new Date().toISOString(),
+    }
+    await saveMessageMongo(messageData)
 
-    const aiMessageId = await saveMessageMongo({
-      session_id: sessionObjectId,
-      user_id: user.id,
-      role: 'assistant',
-      content: aiResponse.summary,
-      recommended: aiResponse.recommended,
-      intent: aiResponse.intent ?? 'suggestion',
-      products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
-      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-      createdAt: new Date().toISOString()
+    // 🤖 Genera risposta AI (usa embedding, entità, sessione)
+    const {
+      aiResponse,
+      responseSource
+    } = await handleChatProductSearch({
+      message,
+      sessionId,
+      sessionObjectId,
+      userId: user.id,
+      entities,
+      embedding
     })
+    logger.debug('Risposta AI', { aiResponse })
 
-    return NextResponse.json({
-      summary: aiResponse.summary,
-      recommended: aiResponse.recommended,
-      products: products.filter(p => aiResponse.recommended.some(r => r.sku === p.sku)),
-      intent: aiResponse.intent ?? 'suggestion',
-      entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
-      _id: aiMessageId?.toString(),
-      source: responseSource
-    })
+   // 💾 Salva risposta AI
+  const aiMessageId = await saveMessageMongo({
+    session_id: sessionObjectId,
+    user_id: user.id,
+    role: 'assistant',
+    content: aiResponse.summary,
+    intent: aiResponse.intent ?? 'suggestion',
+    products: aiResponse.products,
+    entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
+    createdAt: new Date().toISOString()
+  })
+
+  logger.debug('Messaggio AI salvato', { aiMessageId })
+
+  // ✅ Risposta JSON al client
+  return NextResponse.json({
+    summary: aiResponse.summary,
+    products: aiResponse.products,
+    intent: aiResponse.intent ?? 'suggestion',
+    entities: Array.isArray(aiResponse.entities) ? aiResponse.entities : [],
+    _id: aiMessageId?.toString(),
+    source: responseSource
+  })
+    
   } catch (err) {
     logger.error('[POST] Errore in /api/chat', { error: (err as Error).message })
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })

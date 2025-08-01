@@ -56,7 +56,6 @@ export async function sendChatMessage(
 
   return {
     summary: data.summary,
-    recommended: Array.isArray(data.recommended) ? data.recommended : [],
     products: Array.isArray(data.products) ? data.products : [],
     intent: data.intent,
     _id: data._id,

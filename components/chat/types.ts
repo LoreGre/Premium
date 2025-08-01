@@ -14,6 +14,8 @@ export type ProductItem = {
   color?: string
   size?: string
   score?: number
+  isRecommended?: boolean
+  reason?: string
 }
 
 // ------------------ ENTITÀ ------------------
@@ -31,13 +33,11 @@ export type ExtractedEntity =
 // ------------------ RISPOSTA AI ------------------
 export type ChatAIResponse = {
   summary: string
-  recommended: {
-    sku: string
-    reason: string
-  }[]
+  products: ProductItem[] // ✅ AGGIUNGI QUESTO
   intent?: 'info' | 'purchase' | 'compare' | 'clarify' | 'other'
   entities?: ExtractedEntity[]
 }
+
 
 // ------------------ FEEDBACK UTENTE ------------------
 export type Feedback = {
@@ -54,7 +54,6 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   products?: ProductItem[]
-  recommended?: { sku: string; reason: string }[]
   intent?: string
   embedding?: number[]
   feedback?: Feedback
@@ -83,7 +82,6 @@ export type ChatSession = {
 // ------------------ RISPOSTA API CHAT (FRONTEND) ------------------
 export type ChatApiResponse = {
   summary: string
-  recommended: { sku: string; reason: string }[]
   products: ProductItem[]
   intent?: string
   _id?: string
