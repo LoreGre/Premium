@@ -3,7 +3,7 @@
 import { ObjectId } from 'mongodb'
 import { getSessionHistoryMongo } from './chat-sessions'
 import { generateChatResponse } from './chat-response'
-import { fallbackNoEntities, fallbackNoProducts, fallbackContextShift, fallbackNoIntent } from './chat-fallback'
+import { fallbackNoEntities, fallbackNoProducts, fallbackNoIntent } from './chat-fallback'
 import { shouldUseOnlySkuSearch, getSkuValues, findProductsBySku } from './chat-search-sku'
 import { searchHybridMongo } from './chat-search-mongo'
 import type { ChatMessage, ExtractedEntity, ProductItem, FallbackSource, ChatAIResponse } from './types'

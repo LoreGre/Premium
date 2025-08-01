@@ -17,9 +17,9 @@ export function detectContextShift(history: ChatMessage[], currentEntities: Extr
 
   const overlap = [...currentTerms].filter(term => pastTerms.has(term))
 
-  console.log('[ContextShift] currentTerms:', [...currentTerms])
-  console.log('[ContextShift] pastTerms:', [...pastTerms])
-  console.log('[ContextShift] overlap:', overlap)
+  logger.info('[ContextShift] currentTerms:', [...currentTerms])
+  logger.info('[ContextShift] pastTerms:', [...pastTerms])
+  logger.info('[ContextShift] overlap:', overlap)
 
   return (
     overlap.length === 0 &&
