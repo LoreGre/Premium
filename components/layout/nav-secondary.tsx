@@ -39,7 +39,7 @@ export function NavSecondary({
                 <button
                   type="button"
                   onClick={item.onClick}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent focus:outline-none focus:ring-2"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent focus:outline-none focus:ring-0 focus:ring-offset-0"
                 >
                   <item.icon className="w-4 h-4" />
                   <span>{item.title}</span>
